@@ -1,5 +1,5 @@
 use rocket::http::{Status, ContentType};
-use rocket::serde::json::{Json};
+use rocket::serde::{Serialize,json::{Json}};
 use rocket::fs::{NamedFile};
 use std::fs;
 use std::collections::HashMap;
@@ -27,36 +27,6 @@ async fn icon() -> Option<NamedFile> {
 fn index() -> (ContentType, String) {
     let html = fs::read_to_string("/home/roma/PythonApps/dsBot/db_html.html").unwrap();
     (ContentType::HTML, html)
-}
-
-
-#[get("/test?<name>")]
-fn test_api(name: String) -> Json<Option<HashMap<&'static str, &'static str>>> {
-    match name.to_lowercase().as_str() {
-    
-        "roma" => {
-        Json(Some(HashMap::from([
-        ("Имя", "Рома"),
-        ("Позывной", "ДЕгенерал"),
-        ("Роль", "backend")
-        ])))},
-        
-        "sanya" => {
-        Json(Some(HashMap::from([
-        ("Имя", "Саня"),
-        ("Позывной", "Saskeee"),
-        ("Роль", "front")
-        ])))},
-        
-        "danya" => {
-        Json(Some(HashMap::from([
-        ("Имя", "Даня"),
-        ("Позывной", "ДА-НЯЯЯЯ"),
-        ("Роль", "math")
-        ])))},
-        
-        _ => {Json(None)}
-    }
 }
 
 #[get("/get_photo?<name>")]
@@ -90,34 +60,9 @@ struct DocumentFromRequest<'a> {
     number_work: Option<&'a str>,
 }
 
-
-
 #[get("/")] // Для отображения списка api адресов
 async fn all_api() -> Json<Vec<&'static str>> {
-    /*
-    let db = DataBase::new(r"F:\Projects\Rust\juicy_site\test.db");
-    let user = User::new_user(
-        "Roman".to_string(),
-        "Rev1le".to_string(),
-        path::PathBuf::from("https://сочный.xyz/api/get_photo?name=ava_roma.jpg"),
-        "Backend".to_string(),
-        true,
-        452352252,
-        "fwh4v242nv2ln2".to_string(),
-    );
-
-    let doc = Document::new(
-        "Типо отчет".to_string(),
-        "https://google.com".to_string(),
-        user,
-        "Осипова".to_string(),
-        "доклад".to_string(),
-        1,
-        None,
-    );
-    db.add_doc(doc);
-     */
-    Json(vec!["/test?<name>", "/get_photo", "/upload_files?<url>", "/get_doc"])
+    Json(vec!["/get_photo", "/upload_files?<url>", "/get"])
 }
 
 #[get("/get_all_users")]
@@ -126,12 +71,10 @@ fn get_all_users() -> Json<Option<Vec<User>>> {
     Json(Some(db.get_all_user()))
 }
 
-use serde::Serialize;
 #[derive(Debug, Serialize, Clone)]
 enum ResponeDocUser {
     user(User),
-    doc(Document),
-    None
+    doc(Document)
 }
 
 
@@ -268,5 +211,5 @@ fn check_doc(doc: Option<DocumentFromRequest>) -> Vec<ResponeDocUser>{
 #[launch]
 fn rocket() -> _ {
     rocket::build().mount("/", routes![index, icon])
-    .mount("/api", routes![all_api, test_api, get_files, get_all_users, get_val])
+    .mount("/api", routes![all_api, get_files, get_val, get_all_users])
 }
