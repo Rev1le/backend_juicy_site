@@ -1,8 +1,7 @@
 pub mod user;
 pub mod document;
 
-use std::{{path::PathBuf, str::FromStr}, collections::HashMap, fmt};
-use rocket::serde::json::Json;
+use std::{{path::PathBuf, str::FromStr}, collections::HashMap};
 use user::{User, UserEvent};
 use document::Document;
 use sqlite;
@@ -48,7 +47,7 @@ impl DataBase {
         self.connection
             .iterate("SELECT * FROM users", |pairs| {
                 let mut user_vec_field: Vec<String> = Vec::new();
-                for &(column, value) in pairs.iter() {
+                for &(_column, value) in pairs.iter() {
                     user_vec_field.push(value.unwrap().to_string());
                 }
 
@@ -80,7 +79,7 @@ impl DataBase {
             }
             //println!("{}", new_value_str);
 
-            let tmp = format!("{column} = '{new_value_str}' AND ");
+            let tmp = format!("{} = '{}' AND ", column, new_value_str);
             execute_str += &tmp;
         }
         let res = &execute_str[0..execute_str.len()-4]; // Послоедние слова всегдла будут AND
@@ -89,7 +88,7 @@ impl DataBase {
         self.connection
             .iterate(res, |pairs| {
                 let mut user_vec_field: Vec<String> = Vec::new();
-                for &(column, value) in pairs.iter() {
+                for &(_column, value) in pairs.iter() {
                     user_vec_field.push(value.unwrap().to_string());
                 }
 
@@ -118,6 +117,8 @@ impl DataBase {
         Some(vec_user)
     }
 
+    //Пока не нужно
+    /*
     pub fn add_doc(&self, doc: Document) {
         let execute_str = format!("INSERT INTO documents VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{:?}')",
                                   doc.title,
@@ -129,6 +130,8 @@ impl DataBase {
                                   doc.note);
         self.connection.execute(execute_str).unwrap()
     }
+
+     */
 
     pub fn get_doc(&self, dict: HashMap<&str, &str>) -> Option<Vec<Document>>{
         //Добавить дополнения для автора
@@ -145,7 +148,7 @@ impl DataBase {
             }
             //println!("{}", new_value_str);
 
-            let tmp = format!("{column} = '{new_value_str}' AND ");
+            let tmp = format!("{} = '{}' AND ", column, new_value_str);
             execute_str += &tmp;
         }
         let res = &execute_str[0..execute_str.len()-4]; // Послоедние слова всегдла будут AND
@@ -154,7 +157,7 @@ impl DataBase {
         self.connection
             .iterate(res, |pairs| {
                 let mut doc_vec_field: Vec<String> = Vec::new();
-                for &(column, value) in pairs.iter() {
+                for &(_column, value) in pairs.iter() {
                     doc_vec_field.push(value.unwrap().to_string());
                 }
 
@@ -166,7 +169,7 @@ impl DataBase {
         let mut vec_doc: Vec<Document> = Vec::new();
 
         for doc_tmp in vec_docs {
-            let mut doc_user = self.get_user(HashMap::from([("uuid", doc_tmp[2].as_str())]));
+            let doc_user = self.get_user(HashMap::from([("uuid", doc_tmp[2].as_str())]));
             let doc_user_some;
             if doc_user == None {
                 println!("\nАвтора документа не удалой найти по uuid\n");

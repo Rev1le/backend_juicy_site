@@ -1,4 +1,4 @@
-use rocket::http::{Status, ContentType};
+use rocket::http::ContentType;
 use rocket::serde::{Serialize,json::{Json}};
 use rocket::fs::{NamedFile};
 use std::fs;
@@ -6,17 +6,13 @@ use std::collections::HashMap;
 
 extern crate reqwest;
 
-use std::path;
-
 mod sqlite_conn;
 
-use crate::sqlite_conn::user::{User, UserEvent};
+use crate::sqlite_conn::user::{User};
 use crate::sqlite_conn::document::Document;
-use std::{path::PathBuf, str::FromStr};
-use std::time::Instant;
-use sqlite;
-use uuid::Uuid;
 use crate::sqlite_conn::DataBase;
+
+const PATH_BD: &str = r"F:\Projects\Rust\juicy_site\test.db";
 
 #[get("/favicon.ico")] //Иконка сайта
 async fn icon() -> Option<NamedFile> {
@@ -67,14 +63,14 @@ async fn all_api() -> Json<Vec<&'static str>> {
 
 #[get("/get_all_users")]
 fn get_all_users() -> Json<Option<Vec<User>>> {
-    let db = DataBase::new(r"F:\Projects\Rust\juicy_site\test.db");
+    let db = DataBase::new(PATH_BD);
     Json(Some(db.get_all_user()))
 }
 
 #[derive(Debug, Serialize, Clone)]
 enum ResponeDocUser {
-    user(User),
-    doc(Document)
+    ResponeUser(User),
+    ResponeDoc(Document)
 }
 
 
@@ -129,11 +125,11 @@ fn check_user(user: Option<UserFromRequest>) -> Vec<ResponeDocUser>{
                 clear_user = false;
             }
             if !clear_user {
-                let db = DataBase::new(r"F:\Projects\Rust\juicy_site\test.db");
+                let db = DataBase::new(PATH_BD);
                 if let Some(user_vec) = db.get_user(hm) {
                     for user in user_vec {
                         let tmp = user.clone();
-                        vec_result_user.push(ResponeDocUser::user(tmp))
+                        vec_result_user.push(ResponeDocUser::ResponeUser(tmp))
                     }
                 }
             }
@@ -167,13 +163,13 @@ fn check_doc(doc: Option<DocumentFromRequest>) -> Vec<ResponeDocUser>{
                  Найденные документы добавляем к релизному вектору
                   */
                  for respone_user in respone_users_vec {
-                     let db = DataBase::new(r"F:\Projects\Rust\juicy_site\test.db");
-                     if let ResponeDocUser::user(user) = respone_user {
+                     let db = DataBase::new(PATH_BD);
+                     if let ResponeDocUser::ResponeUser(user) = respone_user {
                          let tmp: HashMap<&str, &str> = HashMap::from([("author_uuid", user.uuid.as_str())]);
                          if let Some(doc_vec) = db.get_doc(tmp) {
                              for doc in doc_vec {
                                  let tmp = doc.clone();
-                                 vec_result_doc.push(ResponeDocUser::doc(tmp));
+                                 vec_result_doc.push(ResponeDocUser::ResponeDoc(tmp));
                              }
                          }
                      }
@@ -193,11 +189,11 @@ fn check_doc(doc: Option<DocumentFromRequest>) -> Vec<ResponeDocUser>{
             }
 
             if !clear_doc {
-                let db = DataBase::new(r"F:\Projects\Rust\juicy_site\test.db");
+                let db = DataBase::new(PATH_BD);
                 if let Some(doc_vec) = db.get_doc(hm) {
                     for doc in doc_vec {
                         let tmp = doc.clone();
-                        vec_result_doc.push(ResponeDocUser::doc(tmp));
+                        vec_result_doc.push(ResponeDocUser::ResponeDoc(tmp));
                     }
                 }
             }

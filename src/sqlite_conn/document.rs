@@ -1,7 +1,4 @@
 use std::fmt;
-use std::path;
-use std::path::PathBuf;
-
 
 use crate::sqlite_conn::user::User;
 //use crate::user::UserEvent;
