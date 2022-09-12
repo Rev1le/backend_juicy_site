@@ -1,0 +1,15 @@
+[default]
+address = "127.0.0.1"
+port = 8000
+workers = 6
+max_blocking = 512
+ident = "Rocket"
+log_level = "normal"
+temp_dir = "/tmp"
+cli_colors = true
+#secret_key = ""
+
+
+#[default.tls]
+#key = "/etc/letsencrypt/live/xn--i1ahcl5aza.xyz/privkey.pem"
+#certs = "/etc/letsencrypt/live/xn--i1ahcl5aza.xyz/cert.pem"
