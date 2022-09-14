@@ -1,10 +1,10 @@
 use std::fmt;
+use rocket::serde::{
+    Serialize,
+    Deserialize
+};
 
 use crate::sqlite_conn::user::User;
-//use crate::user::UserEvent;
-
-use rocket::serde::{Serialize, Deserialize};
-//use rocket::serde::json::{Json, Value, json};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Document {

@@ -1,18 +1,20 @@
-use rocket::http::ContentType;
-use rocket::serde::{Serialize,json::{Json}};
-use rocket::fs::{NamedFile};
-use std::fs;
-use std::collections::HashMap;
-
 extern crate reqwest;
-
 mod sqlite_conn;
 
+use rocket::{
+    http::ContentType,
+    serde::{Serialize, json::Json},
+    fs::{NamedFile}
+};
+use std::{
+    fs,
+    collections::HashMap
+};
 use crate::sqlite_conn::user::{User};
 use crate::sqlite_conn::document::Document;
 use crate::sqlite_conn::DataBase;
 
-const PATH_BD: &str = r"F:\Projects\Rust\juicy_site\test.db";
+const PATH_BD: &str = r"F:\Projects\Rust\juicy_site\DAtaBase\test.db";
 
 #[get("/favicon.ico")] //Иконка сайта
 async fn icon() -> Option<NamedFile> {
@@ -77,125 +79,120 @@ enum ResponeDocUser {
 #[get("/get?<user>&<doc>")]
 async fn get_val(
     user: Option<UserFromRequest<'_>>,
-    doc: Option<DocumentFromRequest<'_>>)
-    -> Json<Vec<ResponeDocUser>> {
+    doc: Option<DocumentFromRequest<'_>>) -> Json<Vec<ResponeDocUser>> {
 
     let mut result_vec: Vec<ResponeDocUser> = Vec::with_capacity(4);
-    result_vec.extend_from_slice(&check_user(user));
-    result_vec.extend_from_slice(&check_doc(doc));
 
+    if let Some(user) = user {
+        result_vec.extend_from_slice(&check_user(user));
+    }
+    if let Some(doc) = doc {
+        result_vec.extend_from_slice(&check_doc(doc));
+    }
     Json(result_vec)
-
 }
 
-fn check_user(user: Option<UserFromRequest>) -> Vec<ResponeDocUser>{
-    let mut vec_result_user: Vec<ResponeDocUser> = Vec::new();
-    let mut clear_user = true;
-    match user {
-        None => {},
-        Some(user) => {
-            println!(" Пользователь {:?}", user);
-            let mut hm = HashMap::new();
-            if let Some(name) = user.name {
-                hm.insert("name", name);
-                clear_user = false;
-            }
-            if let Some(nickname) = user.nickname {
-                hm.insert("nickname", nickname);
-                clear_user = false;
-            }
-            if let Some(avatar) = user.avatar {
-                hm.insert("avatar", avatar);
-                clear_user = false;
-            }
-            if let Some(role) = user.role {
-                hm.insert("role", role);
-                clear_user = false;
-            }
-            if let Some(admin) = user.admin {
-                hm.insert("admin", admin);
-                clear_user = false;
-            }
-            if let Some(tg_id) = user.tg_id {
-                hm.insert("tg_id", tg_id);
-                clear_user = false;
-            }
-            if let Some(uuid) = user.uuid {
-                hm.insert("uuid", uuid);
-                clear_user = false;
-            }
-            if !clear_user {
-                let db = DataBase::new(PATH_BD);
-                if let Some(user_vec) = db.get_user(hm) {
-                    for user in user_vec {
-                        let tmp = user.clone();
-                        vec_result_user.push(ResponeDocUser::ResponeUser(tmp))
-                    }
-                }
-            }
+fn check_user(user: UserFromRequest) -> Vec<ResponeDocUser>{
+    println!(" Пользователь {:?}", user);
 
+    let mut vec_result_user: Vec<ResponeDocUser> = Vec::new();
+    let mut clear_user: bool = true;
+    let mut hm = HashMap::new();
+
+    if let Some(name) = user.name {
+        hm.insert("name", name);
+        clear_user = false;
+    }
+    if let Some(nickname) = user.nickname {
+        hm.insert("nickname", nickname);
+        clear_user = false;
+    }
+    if let Some(avatar) = user.avatar {
+        hm.insert("avatar", avatar);
+        clear_user = false;
+    }
+    if let Some(role) = user.role {
+        hm.insert("role", role);
+        clear_user = false;
+    }
+    if let Some(admin) = user.admin {
+        hm.insert("admin", admin);
+        clear_user = false;
+    }
+    if let Some(tg_id) = user.tg_id {
+        hm.insert("tg_id", tg_id);
+        clear_user = false;
+    }
+    if let Some(uuid) = user.uuid {
+        hm.insert("uuid", uuid);
+        clear_user = false;
+    }
+    if !clear_user {
+        let db = DataBase::new(PATH_BD);
+        if let Some(user_vec) = db.get_user(hm) {
+            for user in user_vec {
+                let tmp = user.clone();
+                vec_result_user.push(ResponeDocUser::ResponeUser(tmp))
+            }
         }
     }
     vec_result_user
 }
 
-fn check_doc(doc: Option<DocumentFromRequest>) -> Vec<ResponeDocUser>{
-    let mut vec_result_doc: Vec<ResponeDocUser> = Vec::new();
-    let mut clear_doc = true;
-    match doc {
-        None => {},
-        Some(doc) => {
-            println!(" Документ {:?}", doc);
-            let mut hm = HashMap::new();
-            if let Some(title) = doc.title {
-                hm.insert("title", title);
-                clear_doc = false;
-            }
-            if let Some(path) = doc.path {
-                hm.insert("path", path);
-                clear_doc = false;
-            }
-             if let Some(author) = doc.author {
-                 let respone_users_vec = check_user(Some(author));
-                 /*
-                 Сначала получаем вектор из пользователей, документы который будем искать.
-                 Далее итерируя каждого пользователя ищем документы, которые имеют author_uuid равный user.uuid
-                 Найденные документы добавляем к релизному вектору
-                  */
-                 for respone_user in respone_users_vec {
-                     let db = DataBase::new(PATH_BD);
-                     if let ResponeDocUser::ResponeUser(user) = respone_user {
-                         let tmp: HashMap<&str, &str> = HashMap::from([("author_uuid", user.uuid.as_str())]);
-                         if let Some(doc_vec) = db.get_doc(tmp) {
-                             for doc in doc_vec {
-                                 let tmp = doc.clone();
-                                 vec_result_doc.push(ResponeDocUser::ResponeDoc(tmp));
-                             }
-                         }
-                     }
-                 }
-             }
-            if let Some(subject) = doc.subject {
-                hm.insert("subject", subject);
-                clear_doc = false;
-            }
-            if let Some(type_work) = doc.type_work {
-                hm.insert("type_work", type_work);
-                clear_doc = false;
-            }
-            if let Some(number_work) = doc.number_work {
-                hm.insert("number_work", number_work);
-                clear_doc = false;
-            }
+fn check_doc(doc: DocumentFromRequest) -> Vec<ResponeDocUser>{
+    println!(" Документ {:?}", doc);
 
-            if !clear_doc {
-                let db = DataBase::new(PATH_BD);
-                if let Some(doc_vec) = db.get_doc(hm) {
+    let mut vec_result_doc: Vec<ResponeDocUser> = Vec::new();
+    let mut clear_doc: bool = true;
+    let mut hm = HashMap::new();
+
+    if let Some(title) = doc.title {
+        hm.insert("title", title);
+        clear_doc = false;
+    }
+    if let Some(path) = doc.path {
+        hm.insert("path", path);
+        clear_doc = false;
+    }
+    if let Some(author) = doc.author {
+        let respone_users_vec = check_user(Some(author));
+        /*
+            Сначала получаем вектор из пользователей, документы который будем искать.
+            Далее итерируя каждого пользователя ищем документы, которые имеют author_uuid равный user.uuid
+            Найденные документы добавляем к релизному вектору
+        */
+        for respone_user in respone_users_vec {
+            let db = DataBase::new(PATH_BD);
+            if let ResponeDocUser::ResponeUser(user) = respone_user {
+                let tmp: HashMap<&str, &str> = HashMap::from([("author_uuid", user.uuid.as_str())]);
+                if let Some(doc_vec) = db.get_doc(tmp) {
                     for doc in doc_vec {
                         let tmp = doc.clone();
                         vec_result_doc.push(ResponeDocUser::ResponeDoc(tmp));
                     }
                 }
+            }
+        }
+    }
+    if let Some(subject) = doc.subject {
+        hm.insert("subject", subject);
+        clear_doc = false;
+           }
+    if let Some(type_work) = doc.type_work {
+        hm.insert("type_work", type_work);
+        clear_doc = false;
+    }
+    if let Some(number_work) = doc.number_work {
+        hm.insert("number_work", number_work);
+        clear_doc = false;
+    }
+
+    if !clear_doc {
+        let db = DataBase::new(PATH_BD);
+        if let Some(doc_vec) = db.get_doc(hm) {
+            for doc in doc_vec {
+                let tmp = doc.clone();
+                vec_result_doc.push(ResponeDocUser::ResponeDoc(tmp));
             }
         }
     }

@@ -1,8 +1,17 @@
 pub mod user;
 pub mod document;
 
-use std::{{path::PathBuf, str::FromStr}, collections::HashMap};
-use user::{User, UserEvent};
+use std::{
+    {
+        path::PathBuf,
+        str::FromStr
+    },
+    collections::HashMap
+};
+use user::{
+    User,
+    UserEvent
+};
 use document::Document;
 use sqlite;
 
@@ -41,9 +50,8 @@ impl DataBase {
         }
     }
 
-    pub fn get_all_user<'a, 'b>(&self) -> Vec<User> {
+    pub fn get_all_user(&self) -> Vec<User> {
         let mut vec_users: Vec<Vec<String>>  = Vec::new(); // записываем вектора, которые содержат поля объекта User
-        //let execute_str: String = format!("SELECT * FROM users WHERE {} = '{}'", pa);
         self.connection
             .iterate("SELECT * FROM users", |pairs| {
                 let mut user_vec_field: Vec<String> = Vec::new();

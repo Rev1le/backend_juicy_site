@@ -1,9 +1,13 @@
-use std::path;
-use std::fmt;
-use std::path::PathBuf;
-use std::str::FromStr;
-
-use rocket::serde::{Serialize, Deserialize};
+use std::{
+    path,
+    fmt,
+    path::PathBuf,
+    str::FromStr
+};
+use rocket::serde::{
+    Serialize,
+    Deserialize
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct User {
