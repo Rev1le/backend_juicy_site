@@ -13,3 +13,9 @@ cli_colors = true
 #[default.tls]
 #key = "/etc/letsencrypt/live/xn--i1ahcl5aza.xyz/privkey.pem"
 #certs = "/etc/letsencrypt/live/xn--i1ahcl5aza.xyz/cert.pem"
+#F:\Projects\Rust\juicy_site\DAtaBase\test.db
+#[default.databases.rusqlite]
+#url =
+[global.databases.rusqlite]
+url = "file:test.db"
+#"/DAtaBase/test.db"#"file:rusqlite?mode=memory&cache=shared"

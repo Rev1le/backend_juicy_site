@@ -1,6 +1,7 @@
+
 pub mod user;
 pub mod document;
-
+/*
 use std::{
     {
         path::PathBuf,
@@ -125,8 +126,7 @@ impl DataBase {
         Some(vec_user)
     }
 
-    //Пока не нужно
-    /*
+
     pub fn add_doc(&self, doc: Document) {
         let execute_str = format!("INSERT INTO documents VALUES ('{}', '{}', '{}', '{}', '{}', '{}', '{:?}')",
                                   doc.title,
@@ -139,9 +139,7 @@ impl DataBase {
         self.connection.execute(execute_str).unwrap()
     }
 
-     */
-
-    pub fn get_doc(&self, dict: HashMap<&str, &str>) -> Option<Vec<Document>>{
+    pub fn get_doc(&self, dict: &HashMap<&str, &str>) -> Option<Vec<Document>>{
         //Добавить дополнения для автора
         let mut execute_str = format!("SELECT * FROM documents WHERE ");
         for (column, value) in dict { //защита от SQl инъекций
@@ -203,3 +201,6 @@ impl DataBase {
         return Some(vec_doc)
     }
 }
+
+
+ */
