@@ -46,6 +46,7 @@ pub struct Document {
     pub note: Option<String>,
     pub doc_uuid: Option<String>,
 }
+
 // изменить path на type_doc ИБО имя файла - uuid_docБ а путь к хранилищу файлов может быть динамическим
 
 pub fn get_all_user(conn: &mut rusqlite::Connection) -> Vec<User> {
