@@ -1,13 +1,12 @@
 //use crate::sqlite_conn::{document::Document};
 use rocket_sync_db_pools::rusqlite::{self, params};
 use std::{
-    collections::HashMap
+    collections::HashMap,
+    fs::File,
+    io::Write
 };
-use std::fs::File;
-use std::io::Write;
 
 use uuid::Uuid;
-use std::ops::Add;
 
 use crate::PATH_FOR_SAVE_DOCS;
 
@@ -17,8 +16,8 @@ use rocket::{
         Deserialize,
         json::Json
     },
+    data::DataStream
 };
-use rocket::data::DataStream;
 
 use crate::DocumentFile;
 
@@ -153,23 +152,23 @@ pub fn get_doc(dict: (HashMap<String, String>, Option<HashMap<String, String>>),
     let docs_vec = stmt.query_map([], |row| {
         Ok(
             Document{
-                title: row.get(0).unwrap(),
-                path: row.get(1).unwrap(),
+                title: row.get(7).unwrap(),
+                path: row.get(8).unwrap(),
                 author:
                 User {
-                    name: row.get(8).unwrap(),
-                    nickname: row.get(9).unwrap(),
-                    avatar: row.get(10).unwrap(),
-                    role: row.get(11).unwrap(),
-                    admin: row.get(12).unwrap(),
-                    tg_id: row.get(13).unwrap(),
-                    uuid: row.get(14).unwrap()
+                    name: row.get(0).unwrap(),
+                    nickname: row.get(1).unwrap(),
+                    avatar: row.get(2).unwrap(),
+                    role: row.get(3).unwrap(),
+                    admin: row.get(4).unwrap(),
+                    tg_id: row.get(5).unwrap(),
+                    uuid: row.get(6).unwrap()
                 },
-                subject: row.get(3).unwrap(),
-                type_work: row.get(4).unwrap(),
-                number_work: row.get(5).unwrap(),
-                note: row.get(6).unwrap(),
-                doc_uuid: row.get(7).unwrap()
+                subject: row.get(10).unwrap(),
+                type_work: row.get(11).unwrap(),
+                number_work: row.get(12).unwrap(),
+                note: row.get(13).unwrap(),
+                doc_uuid: row.get(14).unwrap()
             }
         )
     })
@@ -188,8 +187,6 @@ pub fn get_all_users_uuid(conn: &rusqlite::Connection) -> Vec<String> {
         .map(|res| {res.unwrap()})
         .collect::<Vec<String>>()
 }
-
-
 
 pub fn add_doc(
     conn: &rusqlite::Connection,

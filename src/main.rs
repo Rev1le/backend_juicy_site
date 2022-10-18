@@ -1,12 +1,10 @@
 mod db_conn;
 
 use std::{
-    // fs,
     collections::HashMap,
-    // result
+    fs::File,
+    io::Write,
 };
-use std::fs::File;
-use std::io::Write;
 
 use rocket_sync_db_pools::{
     database,
@@ -16,13 +14,18 @@ use rocket_sync_db_pools::{
         params
     }
 };
-use rocket::{serde::{
-    Serialize,
-    // Deserialize,
-    json::Json
-}, fs::{NamedFile}, Data};
-use rocket::data::ToByteUnit;
-use rocket::serde::Deserialize;
+use rocket::{
+    serde::{
+        Serialize,
+        Deserialize,
+        json::Json
+    },
+    fs::{
+        NamedFile
+    },
+    Data,
+    data::ToByteUnit,
+};
 use crate::db_conn::User;
 
 
@@ -32,21 +35,8 @@ async fn icon() -> Option<NamedFile> {
 }
 
 #[get("/")]
-async fn index(db: Db) -> Json<Vec<String>>{//(ContentType, String) {
-    //let html = fs::read_to_string("/home/roma/PythonApps/dsBot/db_html.html").unwrap();
-    //(ContentType::HTML, html)
-    let ids = db.run(|conn| {
-        conn
-            .prepare("SELECT avatar FROM users")?
-            .query_map(
-                params![],
-                |row| row.get(0)
-            )?
-            .collect::<Result<Vec<String>, _>>()
-    })
-        .await
-        .unwrap();
-    return Json(ids)
+async fn index() -> Json<bool>{//(ContentType, String) {
+    Json(true)
 }
 
 #[derive(Serialize)]
@@ -77,13 +67,17 @@ async fn all_api<'a>() -> Json<AllApi<'a>> {
     )
 }
 
-#[get("/get_photo?<name>")]
+const IMAGE_FORMAT: [&str; 3] = ["ico", "png", "jpg"];
+#[get("/get_file?<name>")]
 pub async fn get_files(name: Option<&str>) -> Option<NamedFile> {
-    // Добавить првоерку того, что запрашивавется фото
-	if let Some(photo_name) = name	{
+	if let Some(file_name) = name	{
+
+         //file_name.split(".").last() {
+
 		let strok = format!(
-            "/home/roma/rust/juicy_site/avatars/{}",
-            photo_name
+            "{}{}",
+            PATH_FOR_SAVE_AVATARS,
+            file_name.to_string()
         );
 
         return NamedFile::open(strok)
@@ -116,7 +110,6 @@ struct DocumentFromRequest<'a> {
 
 #[derive(Debug, Serialize, Clone)]
 struct Respone {
-    //users: Vec<user::User>,
     users: Vec<db_conn::User>,
     docs: Vec<db_conn::Document>
 }
@@ -172,7 +165,6 @@ async fn get_val_new<'a>(
     } else {
         if let Some(doc) = doc {
             let tmp = check_doc(doc);
-            println!("{:?}", tmp);
             if tmp.0.len() != 0 || tmp.1 != None {
                 let res = db.run(move |conn| { db_conn::get_doc(tmp, conn)});
                 respone.docs = res.await;
@@ -281,7 +273,7 @@ fn check_doc(doc: DocumentFromRequest)
     res
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, FromForm)]
+#[derive(Debug, Serialize, Deserialize, Clone, FromForm)]
 #[serde(crate = "rocket::serde")]
 pub struct DocumentFile {
     pub title: String,
@@ -294,8 +286,6 @@ pub struct DocumentFile {
     pub note: Option<String>,
 }
 
-
-//TODO переведать Брать данные из названия файла или отедльной строки которую парсить
 #[post("/add_doc", data= "<file>")]
 async fn new_doc(db: Db, file: Json<DocumentFile>) -> Json<bool>{
 
@@ -332,7 +322,8 @@ async fn delete_document(db: Db, doc_uuid: String) -> Json<bool> {
 }
 
 
-const PATH_FOR_SAVE_DOCS: &str = r"F:\";
+const PATH_FOR_SAVE_DOCS: &str = r"C:\Users\nikiy\Documents\";
+const PATH_FOR_SAVE_AVATARS: &str = r"C:\Users\nikiy\Desktop\backend_juicy_site\avatars\";
 
 
 #[database("rusqlite")]
