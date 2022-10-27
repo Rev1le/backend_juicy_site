@@ -15,8 +15,7 @@ use rocket::{
         Serialize,
         Deserialize,
         json::Json
-    },
-    data::DataStream
+    }
 };
 
 use crate::DocumentFile;
@@ -138,13 +137,13 @@ pub fn get_doc(dict: (HashMap<String, String>, Option<HashMap<String, String>>),
 
     for (key, val) in dict.0 {
         let tmp = check_inject_sql(val);
-        sql_execute_str += &format!(r##"AND documents.{key} = '{tmp}'"##);
+        sql_execute_str += &format!(r##"AND documents.{} = '{}'"##, key, tmp);
 
     }
     if let Some(users_args) = dict.1 {
         for (key, val) in users_args {
             let tmp = check_inject_sql(val);
-            sql_execute_str += &format!(r##"AND users.{key} = '{tmp}'"##);
+            sql_execute_str += &format!(r##"AND users.{} = '{}'"##, key, tmp);
         }
     }
 
@@ -226,7 +225,7 @@ pub fn add_doc(
 pub fn del_doc(conn: &rusqlite::Connection, doc_uuid: &str) -> bool {
 
     match Uuid::parse_str(doc_uuid) {
-        Ok(val) => {
+        Ok(_) => {
             conn.execute(
                 "DELETE FROM documents WHERE doc_uuid = (?1)",
                 [doc_uuid]

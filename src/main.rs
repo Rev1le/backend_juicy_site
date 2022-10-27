@@ -5,12 +5,12 @@ use std::{
     fs::File,
     io::Write,
 };
+use std::path::{Path, PathBuf};
 
 use rocket_sync_db_pools::{
     database,
     rusqlite::{
         self,
-        // Connection,
         params
     }
 };
@@ -28,24 +28,27 @@ use rocket::{
 };
 use crate::db_conn::User;
 
-
+/// Иконка сайта
 #[get("/favicon.ico")] //Иконка сайта
 async fn icon() -> Option<NamedFile> {
     NamedFile::open("icon_site.ico").await.ok()
 }
 
+/// Главная страница сайта
 #[get("/")]
 async fn index() -> Json<bool>{//(ContentType, String) {
     Json(true)
 }
 
+/// Хранит название запросов и их описание
 #[derive(Serialize)]
 struct AllApi<'a> {
     methods: Vec<&'a str>,
     about: Vec<&'a str>,
 }
 
-#[get("/")] // Для отображения списка api адресов
+///Адрес для отображения списка api адресов
+#[get("/")]
 async fn all_api<'a>() -> Json<AllApi<'a>> {
     Json(
         AllApi {
@@ -67,24 +70,42 @@ async fn all_api<'a>() -> Json<AllApi<'a>> {
     )
 }
 
+
 const IMAGE_FORMAT: [&str; 3] = ["ico", "png", "jpg"];
-#[get("/get_file?<name>")]
-pub async fn get_files(name: Option<&str>) -> Option<NamedFile> {
-	if let Some(file_name) = name	{
+const DOCUMENTS_FORMAT: [&str; 3] = ["docx", "doc", "pdf"];
+#[get("/get_file/<file..>")]
+pub async fn get_files(file: PathBuf) -> Option<NamedFile> {
 
-         //file_name.split(".").last() {
+    println!("{:?} {:?}", &file, &file.extension());
+    let file_type = match file.extension() {
+        Some(val) => {val},
+        None => {
+            return None
+        }
+    };
 
-		let strok = format!(
-            "{}{}",
-            PATH_FOR_SAVE_AVATARS,
-            file_name.to_string()
-        );
+    let mut path = " ";
 
-        return NamedFile::open(strok)
-            .await
-            .ok()
-	}
-	None
+    for format in IMAGE_FORMAT {
+        if *format == *file_type {
+            path = PATH_FOR_SAVE_AVATARS;
+        }
+    }
+
+    for format in DOCUMENTS_FORMAT {
+        if *format == *file_type {
+            path = PATH_FOR_SAVE_DOCS;
+        }
+    }
+
+    if path == " " {
+        return None;
+    }
+
+    return NamedFile::open(
+        Path::new(path).join(file))
+        .await
+        .ok()
 }
 
 #[derive(Debug, FromForm, Copy, Clone)]
@@ -107,6 +128,7 @@ struct DocumentFromRequest<'a> {
     type_work: Option<&'a str>,
     number_work: Option<&'a str>,
 }
+
 
 #[derive(Debug, Serialize, Clone)]
 struct Respone {
@@ -134,23 +156,24 @@ async fn get_val_new<'a>(
                 db_conn::get_all_user(conn)
             });
         respone.users = res.await;
-    } else {
+    } else { //Если необходимы пользователим по ключевым полям
 
         if let Some(user_v) = user {
 
             let hm = check_user(&user_v);
             let res = db
                 .run(move |conn| {
-                    if hm.len() != 0 {
-                        if let Some(user_vec) = db_conn::get_user(conn,  hm) {
-                            return user_vec
+                    if hm.len() != 0 { //Если запрос с пустыми полями
+                        if let Some(user_vec) = db_conn::get_user(conn, hm) {
+                            return user_vec;
                         }
                     }
-                    return Vec::new()
-                });
 
-            //let tmp = check_user(&user, &conn);
-            respone.users = res.await;
+                    return Vec::new();
+
+                }).await;
+
+            respone.users = res;
         }
     }
 
@@ -177,7 +200,6 @@ async fn get_val_new<'a>(
 }
 
 fn check_user(user: &UserFromRequest) -> HashMap<String, String> {
-    //println!(" Пользователь {:?}", user);
     let mut hm = HashMap::new();
 
     if let Some(name) = user.name {
@@ -230,8 +252,9 @@ fn check_doc(doc: DocumentFromRequest)
         HashMap<String, String>,
         Option<HashMap<String, String>>
     ) {
-    //println!(" Документ {:?}", doc);
-    let mut res: (HashMap<String, String>, Option<HashMap<String, String>>) = (HashMap::new(), None);
+    let mut res: (
+        HashMap<String, String>,
+        Option<HashMap<String, String>>) = (HashMap::new(), None);
 
     if let Some(title) = doc.title {
         res.0.insert(
@@ -290,22 +313,19 @@ pub struct DocumentFile {
 async fn new_doc(db: Db, file: Json<DocumentFile>) -> Json<bool>{
 
     db.run(move |conn| {
-        let tmp = db_conn::get_all_users_uuid(conn)
+        if let None = db_conn::get_all_users_uuid(conn)
             .iter()
-            .position(|each|
-                *each == file.author_uuid
-            );
-
-        return if let Some(_) = tmp {
-            if db_conn::add_doc(conn, file) {
-                Json(true)
-            } else {
-                Json(false)
-            }
-        } else {
-            Json(false)
+            .position(|val| {*val == file.author_uuid})
+        {
+           return Json(false);
         }
 
+        if db_conn::add_doc(conn, file) {
+            return Json(true);
+        }
+        else {
+            return Json(false);
+        }
     }).await
 }
 
@@ -322,8 +342,8 @@ async fn delete_document(db: Db, doc_uuid: String) -> Json<bool> {
 }
 
 
-const PATH_FOR_SAVE_DOCS: &str = r"C:\Users\nikiy\Documents\";
-const PATH_FOR_SAVE_AVATARS: &str = r"C:\Users\nikiy\Desktop\backend_juicy_site\avatars\";
+const PATH_FOR_SAVE_DOCS: &str = r"F:\";
+const PATH_FOR_SAVE_AVATARS: &str = r"F:\Projects\Rust\juicy_site\avatars\";
 
 
 #[database("rusqlite")]
