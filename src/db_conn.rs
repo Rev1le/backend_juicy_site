@@ -17,6 +17,9 @@ use rocket::{
         json::Json
     }
 };
+use rocket::data::DataStream;
+use rocket::form::Form;
+use crate::document_request::DocumentFromRequest;
 
 use crate::DocumentFile;
 
@@ -46,6 +49,19 @@ pub struct Document {
 }
 
 // изменить path на type_doc ИБО имя файла - uuid_docБ а путь к хранилищу файлов может быть динамическим
+
+fn check_inject_sql(st: String) -> String {
+    let mut res = String::new();
+
+    for val in st.chars() { //Отслеживание SQl инъекций
+        if !val.is_ascii_punctuation() { //Если символ не пунктуация
+            res.push(val);
+        }
+    }
+    res
+}
+
+
 
 pub fn get_all_user(conn: &mut rusqlite::Connection) -> Vec<User> {
     let mut stmt = conn
@@ -78,18 +94,7 @@ pub fn get_user(conn: &rusqlite::Connection, dict: HashMap<String, String>) -> O
     let mut execute_str = String::from("SELECT * FROM users WHERE ");
 
     for (column, value) in dict {
-        let vec_ch = value.chars();
-        let mut new_value_str = String::new();
-
-        for v in vec_ch { //Отслеживание SQl инъекций
-            match v {
-                '\'' => {continue}//println!("Одинар"),
-                '\"' => {continue}//println!("Двойная"),
-                _ => new_value_str.push(v)
-            }
-        }
-
-        let tmp = format!("{} = '{}' AND ", column, new_value_str);
+        let tmp = format!("{} = '{}' AND ", column, check_inject_sql(value));
         execute_str += &tmp;
     }
     let res = &execute_str[0..execute_str.len()-4]; // Послоедние слова всегдла будут AND
@@ -122,18 +127,6 @@ pub fn get_user(conn: &rusqlite::Connection, dict: HashMap<String, String>) -> O
 pub fn get_doc(dict: (HashMap<String, String>, Option<HashMap<String, String>>), conn: &rusqlite::Connection) -> Vec<Document>{
 
     let mut sql_execute_str = String::from("SELECT * FROM users, documents WHERE (documents.author_uuid = users.uuid) ");
-
-    fn check_inject_sql(st: String) -> String {
-        let mut res = String::new();
-        for val in st.chars() { //Отслеживание SQl инъекций
-            if !val.is_ascii_punctuation() {
-                //println!("{}", val);
-                //res.push(val)
-                res.push(val);
-            }
-        }
-        res
-    }
 
     for (key, val) in dict.0 {
         let tmp = check_inject_sql(val);
@@ -189,37 +182,27 @@ pub fn get_all_users_uuid(conn: &rusqlite::Connection) -> Vec<String> {
 
 pub fn add_doc(
     conn: &rusqlite::Connection,
-    doc: Json<DocumentFile>) -> bool
+    doc: Document) -> bool
 {
-
-    let doc_uuid: String = Uuid::new_v4().to_string();
-    let tmp = format!(r"{}.{}", doc_uuid, doc.file_type);
-
-    if File::create(String::from(PATH_FOR_SAVE_DOCS) + &tmp)
-        .unwrap()
-        .write(&doc.file)
-        .is_err() {
-        return false
-    } else {
-        conn.execute(
-            "INSERT INTO documents VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-            doc.title,
-            tmp,
-            doc.author_uuid,
-            doc.subject,
-            doc.type_work,
+    let tmp = conn.execute(
+        "INSERT INTO documents VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            check_inject_sql(doc.title),
+            check_inject_sql(doc.path),
+            check_inject_sql(doc.author.uuid),
+            check_inject_sql(doc.subject),
+            check_inject_sql(doc.type_work),
             doc.number_work,
             if doc.note == None {
                 "None".to_string()
             } else {
-                doc.note.as_ref().unwrap().to_string()
+                doc.note.unwrap().to_string()
             },
-            doc_uuid
+             doc.doc_uuid.unwrap().to_string()
         ]
-        )
-            .is_ok()
-    }
+        );
+    println!("{:?}", &tmp);
+    return tmp.is_ok()
 }
 
 pub fn del_doc(conn: &rusqlite::Connection, doc_uuid: &str) -> bool {
@@ -233,4 +216,23 @@ pub fn del_doc(conn: &rusqlite::Connection, doc_uuid: &str) -> bool {
         },
         Err(E) => false
     }
+}
+
+
+pub fn update_doc(
+    conn: &rusqlite::Connection,
+    hm: HashMap<String, String>,
+    doc_uuid: String
+) -> bool {
+
+    let mut sql_execute_str = String::from("UPDATE documents SET ");
+
+    for (key, val) in hm{
+        sql_execute_str += &format!(r##"{} = '{}', "##, key, check_inject_sql(val));
+    }
+    sql_execute_str.pop();
+    sql_execute_str.pop();
+    sql_execute_str += &format!("WHERE doc_uuid = '{}'", doc_uuid);
+    println!("{}", &sql_execute_str);
+    conn.execute(&sql_execute_str, []).is_ok()
 }
