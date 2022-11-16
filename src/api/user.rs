@@ -1,4 +1,17 @@
 use std::collections::HashMap;
+use rocket::serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, FromForm)]
+#[serde(crate = "rocket::serde")]
+pub struct User {
+    pub name: String,
+    pub nickname: String,
+    pub avatar: String,
+    pub role: String,
+    pub admin: String,
+    pub tg_id: i64,
+    pub uuid: String,
+}
 
 //Структура для запроса пользователя
 #[derive(Debug, FromForm, Copy, Clone)]
