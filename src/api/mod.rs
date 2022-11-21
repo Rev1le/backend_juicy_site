@@ -13,6 +13,8 @@ use document::{
 
 mod db_conn;
 
+use crate::Db;
+
 
 use rocket::{
     fs::NamedFile,
@@ -264,10 +266,6 @@ async fn update_document(
 const PATH_FOR_SAVE_DOCS: &str = r"F:\";
 const PATH_FOR_SAVE_AVATARS: &str = r"F:\Projects\Rust\juicy_site\avatars\";
 
-
-#[database("rusqlite")]
-pub struct Db(rusqlite::Connection);
-
 pub fn stage() -> AdHoc {
     AdHoc::on_ignite("API stage", |rocket| async {
         rocket
@@ -281,9 +279,6 @@ pub fn stage() -> AdHoc {
                     new_doc,
                     update_document
                 ]
-            )
-            .attach(
-                Db::fairing()
             )
     })
 }
