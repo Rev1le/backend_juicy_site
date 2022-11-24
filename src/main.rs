@@ -1,6 +1,6 @@
 mod api;
 mod auth;
-mod TelegramBot;
+mod telegram_bot;
 
 use rocket_sync_db_pools::{
     Connection,
@@ -35,6 +35,6 @@ fn rocket() -> _ {
         .attach(Db::fairing())
         .attach(api::stage())
         .attach(auth::stage())
-        .attach(TelegramBot::state()
+        .attach(telegram_bot::state()
         )
 }
