@@ -15,7 +15,7 @@ uuid = {features = [
     "macro-diagnostics"
 ]}
 url = {version = "2.3.1"}
-
+telegram_bot = {path = "F:\\Projects\\Rust\\telegram_bot"}
 
 [dependencies.rocket_sync_db_pools]
 version = "0.1.0-rc.2"

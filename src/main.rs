@@ -1,40 +1,36 @@
-mod api;
-mod auth;
-mod telegram_bot;
+#[macro_use] extern crate rocket;
+// Работа с документами
+pub mod api;
+// Авторизация на сайте
+pub mod auth;
+// Callback телеграм бот
+pub mod telegram_bot;
 
-use rocket_sync_db_pools::{
-    Connection,
-    database,
-    rusqlite::{
-        self,
-        params
-    }
-};
+use rocket_sync_db_pools::{database, rusqlite};
+
 
 /// Иконка сайта
 #[get("/favicon.ico")] //Иконка сайта
-async fn icon() -> Option<rocket::fs::NamedFile> {
+pub async fn icon() -> Option<rocket::fs::NamedFile> {
     rocket::fs::NamedFile::open("icon_site.ico").await.ok()
 }
 
 /// Главная страница сайта
 #[get("/")]
-async fn index() -> rocket::serde::json::Json<bool> {
+pub async fn index() -> rocket::serde::json::Json<bool> {
     rocket::serde::json::Json(true)
 }
 
+// Соединение с базой данных
 #[database("rusqlite")]
 pub struct Db(rusqlite::Connection);
 
-#[macro_use] extern crate rocket;
-
 #[launch]
-fn rocket() -> _ {
+pub fn rocket() -> _ {
     rocket::build()
-        .mount("/", routes![index,icon])
+        .mount("/", routes![index, icon])
         .attach(Db::fairing())
         .attach(api::stage())
         .attach(auth::stage())
-        .attach(telegram_bot::state()
-        )
+        .attach(telegram_bot::state())
 }

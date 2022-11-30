@@ -1,54 +1,20 @@
-use rocket_sync_db_pools::rusqlite::{
-    self,
-    {Connection, OptionalExtension}
-};
-use std::fs::read_to_string;
-use reqwest::{self, Url};
+use rocket_sync_db_pools::rusqlite::{Connection, OptionalExtension};
 use rocket::{
     serde::json::{Json, Value},
     fairing::AdHoc
 };
+pub use telegram_bot::telegram_bot_methods::TelegramBotMethods;
 use uuid::Uuid;
 use crate::Db;
 
-const TG_API: &str = "https://api.telegram.org/bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
+
+pub const TG_API: &str = "https://api.telegram.org/bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
+pub const BOT_TOKEN: &str = "bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
+
 
 pub struct TgBot;
-
+impl TelegramBotMethods for TgBot {}
 impl TgBot {
-    pub async fn send_message<I, K, V>(args: I) -> bool
-        where
-            I: IntoIterator,
-            <I as IntoIterator>::Item: std::borrow::Borrow<(K, V)>,
-            K: AsRef<str>,
-            V: AsRef<str>,
-    {
-        if reqwest::get(Url::parse_with_params(&(TG_API.to_owned()+"/sendMessage"), args).expect("Неправильные аргументы для URL")).await.is_ok() {
-            return true
-        }
-        return false
-    }
-
-    pub async fn delete_message<I, K, V>(args: I) -> bool
-        where
-            I: IntoIterator,
-            <I as IntoIterator>::Item: std::borrow::Borrow<(K, V)>,
-            K: AsRef<str>,
-            V: AsRef<str>,
-    {
-        if reqwest::get(
-            Url::parse_with_params(
-                &(TG_API.to_owned()+"/deleteMessage"),
-                args
-            ).expect("Неправильные аргументы для URL")
-        ).await.is_ok()
-        {
-            return true
-        }
-        return false
-
-    }
-
     pub fn get_login_confirmation_keyboard(uuid: &str) -> String {
         let keyboard_one = r#"
         {"inline_keyboard":[
@@ -71,6 +37,66 @@ impl TgBot {
 
     }
 }
+// impl TgBot {
+//     pub async fn send_message<I, K, V>(args: I) -> bool
+//         where
+//             I: IntoIterator,
+//             <I as IntoIterator>::Item: std::borrow::Borrow<(K, V)>,
+//             K: AsRef<str>,
+//             V: AsRef<str>,
+//     {
+//         let request = reqwest::get(Url::parse_with_params(
+//                 &(TG_API.to_owned()+"/sendMessage"),
+//                 args
+//         ).expect("Неправильные аргументы для URL"));
+//
+//         if  request.await.is_ok() {
+//             return true
+//         }
+//         return false
+//     }
+//
+//     pub async fn delete_message<I, K, V>(args: I) -> bool
+//         where
+//             I: IntoIterator,
+//             <I as IntoIterator>::Item: std::borrow::Borrow<(K, V)>,
+//             K: AsRef<str>,
+//             V: AsRef<str>,
+//     {
+//         let request = reqwest::get(Url::parse_with_params(
+//             &(TG_API.to_owned()+"/deleteMessage"),
+//             args
+//         ).expect("Неправильные аргументы для URL"));
+//
+//         if  request.await.is_ok() {
+//             return true
+//         }
+//         return false
+//
+//     }
+//
+//     pub fn get_login_confirmation_keyboard(uuid: &str) -> String {
+//         let keyboard_one = r#"
+//         {"inline_keyboard":[
+//         [
+//         {
+//             "text": "Yes",
+//             "callback_data": "ConfirmedLogin"#;
+//
+//         let keyboard_two = r#"}
+//         ],
+//         [
+//             {
+//                 "text": "No",
+//                 "callback_data": "FailuredLogin"
+//             }
+//         ]
+//         ]}"#;
+//
+//         format!("{}:{}{}", keyboard_one, uuid,keyboard_two)
+//
+//     }
+// }
 
 
 #[post("/", data="<update_data>")]
@@ -116,7 +142,10 @@ async fn check_message(message: &Value, db: &Db) {
         .collect::<Vec<&str>>();
 
     if words_vec[0] == "/reg" {
-        let reg_nickname = words_vec[0];
+        if words_vec.len() < 2 {
+            return;
+        }
+        let reg_nickname = words_vec[1];
         account_register(username,  reg_nickname, user_id,chat_id, db).await;
     }
 }
@@ -133,14 +162,11 @@ async fn account_register(username: &str, nickname: &str, user_id: i64, chat_id:
         }
     ).await {
         println!("Пользователь зареган с tg_id = {}", id);
-
-        TgBot::send_message(
-            &[
-                ("chat_id", chat_id.to_string().as_str()),
-                ("text", "Аккаунт с таким ником уже зарегестрирован.")
-            ]).await;
+        TgBot::send_message(BOT_TOKEN, &[
+            ("chat_id", chat_id.to_string().as_str()),
+            ("text", "Аккаунт с таким ником уже зарегестрирован.")
+        ]).await;
         return;
-
 
         // argsDict = {
         //     "chat_id": Chat_id,
@@ -150,7 +176,7 @@ async fn account_register(username: &str, nickname: &str, user_id: i64, chat_id:
     }
     println!("Пользователь не зареган.");
 
-    let mut insert_values =[
+    let insert_values =[
         username.to_string(),
         nickname.to_string(),
         "unknown.png".to_string(),
@@ -168,8 +194,8 @@ async fn account_register(username: &str, nickname: &str, user_id: i64, chat_id:
             .execute(insert_values)
             .expect("Ошибка при добавлении");
     }).await;
-    TgBot::send_message(
-        &[
+    TgBot::send_message(BOT_TOKEN,
+                        &[
             ("chat_id", chat_id.to_string().as_str()),
             ("text", "Пользователь успешно зарегестрирован!!!")
         ]
@@ -181,7 +207,7 @@ async fn check_callback_query(db: &Db, callback: &Value) {
         let message_id = message["message_id"].as_i64().unwrap();
         let chat_id =message["chat"]["id"].as_i64().unwrap();
 
-        TgBot::delete_message(&[
+        TgBot::delete_message(BOT_TOKEN, &[
             ("message_id", message_id.to_string()),
             ("chat_id", chat_id.to_string()),
             ("disable_notification", true.to_string())

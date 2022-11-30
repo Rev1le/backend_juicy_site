@@ -1,20 +1,6 @@
-mod user;
-use user::{
-    User,
-    UserFromRequest
-};
-
-mod document;
-use document::{
-    Document,
-    DocumentFile,
-    DocumentFromRequest
-};
-
-mod db_conn;
-
-use crate::Db;
-
+pub mod user;
+pub mod document;
+pub mod db_conn;
 
 use rocket::{
     fs::NamedFile,
@@ -23,21 +9,30 @@ use rocket::{
     serde::{
         json::Json,
         Serialize,
-        Deserialize
     }
 };
 
-use rocket_sync_db_pools::{
-    Connection,
-    database,
-    rusqlite::{
-        self,
-        params
-    }
-};
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf}};
+    path::{Path, PathBuf}
+};
+
+use user::{
+    User,
+    UserFromRequest
+};
+
+use document::{
+    Document,
+    DocumentFile,
+    DocumentFromRequest
+};
+
+use crate::Db;
+
+// Пути для сохранения изображений и дркументов
+const PATH_FOR_SAVE_DOCS: &str = r"F:\";
+const PATH_FOR_SAVE_AVATARS: &str = r"F:\Projects\Rust\juicy_site\avatars\";
 
 //Структура для возвращения пользователей и(или) документов
 #[derive(Debug, Serialize, Clone)]
@@ -76,16 +71,16 @@ async fn all_api<'a>() -> Json<AllApi<'a>> {
     )
 }
 
-
 const IMAGE_FORMAT: [&str; 3] = ["ico", "png", "jpg"];
 const DOCUMENTS_FORMAT: [&str; 3] = ["docx", "doc", "pdf"];
-#[get("/get_file/<file_path..>")]
-pub async fn get_files(file_path: PathBuf) -> Option<NamedFile> {
 
-    println!("Запрошен файл по пути: {:?}", &file_path);
+#[get("/get_file/<file_name..>")]
+pub async fn get_files(file_name: PathBuf) -> Option<NamedFile> {
 
-    let file_type =
-        match file_path.extension() { //Если в пути есть формат файла
+    println!("Запрошен файл по пути: {:?}", &file_name);
+
+    let type_file =
+        match file_name.extension() { //Если в пути есть формат файла
             Some(val) => val,
             None => return None
         };
@@ -94,14 +89,14 @@ pub async fn get_files(file_path: PathBuf) -> Option<NamedFile> {
 
     // Соответсвует ли формат файла изображению
     for format in IMAGE_FORMAT {
-        if *format == *file_type {
+        if *format == *type_file {
             path_dir = PATH_FOR_SAVE_AVATARS;
         }
     }
 
     // Соответсвует ли формат файла документу
     for format in DOCUMENTS_FORMAT {
-        if *format == *file_type {
+        if *format == *type_file {
             path_dir = PATH_FOR_SAVE_DOCS;
         }
     }
@@ -114,12 +109,12 @@ pub async fn get_files(file_path: PathBuf) -> Option<NamedFile> {
     return
         NamedFile::open(
             Path::new(path_dir)
-                .join(file_path)
+                .join(file_name)
         ).await.ok()  //Возвращает файл или None
 }
 
 #[get("/get?<user>&<doc>&<all_users>&<all_docs>")]
-async fn get_val_new<'a>(
+async fn get_json_user_doc<'a>(
     db: Db,
     user: Option<UserFromRequest<'a>>,
     doc: Option<DocumentFromRequest<'a>>,
@@ -136,12 +131,18 @@ async fn get_val_new<'a>(
         let res = db
             .run(
                 move |conn| {
-                    db_conn::get_all_user(conn)
+                    db_conn::get_user(conn, HashMap::new())
+                        .expect("Ошибка при получении всех пользователей с ошибкой")
                 }
             ).await;
-        response.users = res;
-    } else { //Если необходимы пользователим по ключевым полям
-
+        if let Some(val) = res {
+            response.users = val;
+        } else {
+            println!("Ошибка при получении всех документов");
+        }
+    } else
+    //Если необходимы пользователим по ключевым полям
+    {
         if let Some(user_v) = user {
 
             // Получаем HashMap типа <Данные_пользователя, запрашиваемое_значение>
@@ -149,10 +150,11 @@ async fn get_val_new<'a>(
 
             //Если запрос не с пустыми полями
             if hm.len() != 0 {
-                if let Some(user_vec) = db.run(
+                let opt_user_vec = db.run(
                     |conn| db_conn::get_user(conn, hm)
-                ).await
-                {
+                ).await.expect("Ошибка при получении пользователей по пармаетрам");
+
+                if let Some(user_vec) = opt_user_vec {
                     response.users = user_vec
                 }
             }
@@ -166,7 +168,7 @@ async fn get_val_new<'a>(
                 (HashMap::new(), None),
                 conn
             )
-        ).await;
+        ).await.expect("Ошибка при выводе всех документов");
 
     } else {
         // Если необходимы выбранные документы
@@ -176,7 +178,7 @@ async fn get_val_new<'a>(
             if (tmp.0.len() != 0) || (tmp.1 != None) {
                 response.docs = db.run(
                     move |conn| db_conn::get_doc(tmp, conn)
-                ).await;
+                ).await.expect("Ошибка при выводе документов по параметрам");
             }
         }
     }
@@ -184,50 +186,20 @@ async fn get_val_new<'a>(
 }
 
 
-impl<'a> DocumentFile<'a> {
-    async fn docfile_to_doc(&mut self) -> Document {
-        use uuid::Uuid;
 
-        let doc_uuid = Uuid::new_v4().to_string();
-        let file_name = format!("{}.{}", doc_uuid, self.file_type);
-        let path = format!("{}{}", PATH_FOR_SAVE_DOCS, file_name);
-        self.file.copy_to(path).await.unwrap();
-
-        Document {
-            title: self.title.clone(),
-            path: file_name,
-            author: User {
-                name: "".to_string(),
-                nickname: "".to_string(),
-                avatar: "".to_string(),
-                role: "".to_string(),
-                admin: "".to_string(),
-                tg_id: 0,
-                uuid: self.author_uuid.clone()
-            },
-            subject: self.subject.clone(),
-            type_work: self.type_work.clone(),
-            number_work: self.number_work,
-            note: self.note.clone(),
-            doc_uuid: Some(doc_uuid)
-        }
-    }
-}
 
 #[post("/add_doc", data= "<file>")]
 async fn new_doc(db: Db, mut file: Form<DocumentFile<'_>>) -> Json<String> {
 
-    let mut filed = file.docfile_to_doc().await;
+    let filed = file.docfile_to_doc().await;
     let tmp = filed.path.clone();
-    println!("{:?}", filed);
+    println!("{:?}", &filed);
 
     db.run(|conn| {
-
-        if db_conn::add_doc(conn, filed) {
-            return Json(true);
-        }
-        else {
-            return Json(false);
+        return if let Ok(_) = db_conn::add_doc(conn, filed) {
+            Json(true)
+        } else {
+            Json(false)
         }
     }).await;
     return Json(tmp);
@@ -263,21 +235,18 @@ async fn update_document(
     )
 }
 
-const PATH_FOR_SAVE_DOCS: &str = r"F:\";
-const PATH_FOR_SAVE_AVATARS: &str = r"F:\Projects\Rust\juicy_site\avatars\";
-
 pub fn stage() -> AdHoc {
     AdHoc::on_ignite("API stage", |rocket| async {
         rocket
             .mount(
                 "/api",
                 routes![
-                    all_api,
-                    get_files,
-                    delete_document,
-                    get_val_new,
-                    new_doc,
-                    update_document
+                    all_api,            // Спиок всех API url путей
+                    get_files,          // Получение файла
+                    delete_document,    // Удаление документа
+                    get_json_user_doc,  // Получение данных из БД
+                    new_doc,            // Создание документа
+                    update_document     // Обновление сведений об документе
                 ]
             )
     })

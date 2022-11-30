@@ -1,69 +1,30 @@
-use crate::api::PATH_FOR_SAVE_DOCS;
-use super::document::{Document, DocumentFromRequest};
-use super::user::User;
-
 use rocket_sync_db_pools::rusqlite::{self, params};
 use std::{
     collections::HashMap,
-    fs::{self, File},
-    io::Write
+    fs,
 };
 use uuid::Uuid;
 
-use rocket::{
-    serde::{
-        Serialize,
-        Deserialize,
-        json::Json
-    },
-    data::DataStream,
-    form::Form
-};
+use super::document::Document;
+use super::user::User;
 
 // изменить path на type_doc ИБО имя файла - uuid_docБ
 //   а путь к хранилищу файлов может быть динамическим
 
-fn check_inject_sql(st: String) -> String {
-    let mut res = String::new();
-
-    for val in st.chars() { //Отслеживание SQl инъекций
-        if !val.is_ascii_punctuation() { //Если символ не пунктуация
-            res.push(val);
-        }
-    }
-    res
-}
-
-pub fn get_all_user(
-    conn: &mut rusqlite::Connection
-) -> Vec<User> {
-    let mut stmt = conn
-        .prepare("SELECT * FROM users")
-        .unwrap();
-
-    stmt
-        .query_map([], |row| {
-            Ok(
-                User{
-                    name: row.get(0).unwrap(),
-                    nickname: row.get(1).unwrap(),
-                    avatar: row.get(2).unwrap(),
-                    role: row.get(3).unwrap(),
-                    admin: row.get(4).unwrap(),
-                    tg_id: row.get(5).unwrap(),
-                    uuid: row.get(6).unwrap()
-                }
-            )
-        })
-        .unwrap()
-        .map(|res| res.unwrap())
-        .collect()
-}
-
+// fn check_inject_sql(st: String) -> String {
+//     let mut res = String::new();
+//
+//     for val in st.chars() { //Отслеживание SQl инъекций
+//         if !val.is_ascii_punctuation() { //Если символ не пунктуация
+//             res.push(val);
+//         }
+//     }
+//     res
+// }
 pub fn get_user(
     conn: &rusqlite::Connection,
     dict: HashMap<String, String>
-) -> Option<Vec<User>>{
+) -> Result<Option<Vec<User>>, rusqlite::Error>{
 
     let mut execute_str = String::from("SELECT * FROM users WHERE ");
 
@@ -71,16 +32,14 @@ pub fn get_user(
         let tmp = format!(
             "{} = '{}' AND ",
             column,
-            check_inject_sql(value)
+            value
         );
         execute_str += &tmp;
     }
     // Послоедние слова всегдла будут AND
     let res = &execute_str[0..execute_str.len()-4];
 
-    let mut stmt = conn
-        .prepare(res)
-        .unwrap();
+    let mut stmt = conn.prepare(res)?;
 
     let users_vec = stmt
         .query_map([], |row| {
@@ -95,18 +54,29 @@ pub fn get_user(
                     uuid: row.get(6).unwrap()
                 }
             )
-        })
-        .unwrap()
-        .map(|res_user| {res_user.unwrap()})
-        .collect();
-    Some(users_vec)
+        })?.collect::<Vec<Result<User, rusqlite::Error>>>();
+
+    let mut ret_users_vec = Vec::with_capacity(users_vec.iter().count());
+
+    for res_user in users_vec {
+        if let Ok(user) = res_user {
+            ret_users_vec.push(user);
+        } else {
+            println!("Пользователь получен с ошибкой");
+        }
+    }
+
+    Ok(Some(ret_users_vec))
 }
 
 
 pub fn get_doc(
-    dict: (HashMap<String, String>, Option<HashMap<String, String>>),
+    dict: (
+        HashMap<String, String>,
+        Option<HashMap<String, String>>
+    ),
     conn: &rusqlite::Connection
-) -> Vec<Document> {
+) -> Result<Vec<Document>, rusqlite::Error> {
 
     let mut sql_execute_str =
         String::from(
@@ -129,33 +99,38 @@ pub fn get_doc(
     let docs_vec = stmt.query_map([], |row| {
         Ok(
             Document{
-                title: row.get(7).unwrap(),
-                path: row.get(8).unwrap(),
+                title: row.get(7)?,
+                path: row.get(8)?,
                 author:
                 User {
-                    name: row.get(0).unwrap(),
-                    nickname: row.get(1).unwrap(),
-                    avatar: row.get(2).unwrap(),
-                    role: row.get(3).unwrap(),
-                    admin: row.get(4).unwrap(),
-                    tg_id: row.get(5).unwrap(),
-                    uuid: row.get(6).unwrap()
+                    name: row.get(0)?,
+                    nickname: row.get(1)?,
+                    avatar: row.get(2)?,
+                    role: row.get(3)?,
+                    admin: row.get(4)?,
+                    tg_id: row.get(5)?,
+                    uuid: row.get(6)?
                 },
-                subject: row.get(10).unwrap(),
-                type_work: row.get(11).unwrap(),
-                number_work: row.get(12).unwrap(),
-                note: row.get(13).unwrap(),
-                doc_uuid: row.get(14).unwrap()
+                subject: row.get(10)?,
+                type_work: row.get(11)?,
+                number_work: row.get(12)?,
+                note: row.get(13)?,
+                doc_uuid: row.get(14)?
             }
         )
-    })
-        .unwrap()
-        .map(
-            |res_user| res_user.unwrap()
-        )
-        .collect::<Vec<Document>>();
+    })?.collect::<Vec<Result<Document, rusqlite::Error>>>();
 
-    return docs_vec
+    let mut ret_doc_vec = Vec::with_capacity(docs_vec.iter().count());
+
+    for res_doc in docs_vec {
+        if let Ok(doc) = res_doc {
+            ret_doc_vec.push(doc);
+        } else {
+            println!("Документ получен с ошибкой");
+        }
+    }
+
+    return Ok(ret_doc_vec)
 }
 
 pub fn get_all_users_uuid(conn: &rusqlite::Connection) -> Vec<String> {
@@ -175,26 +150,26 @@ pub fn get_all_users_uuid(conn: &rusqlite::Connection) -> Vec<String> {
 pub fn add_doc(
     conn: &rusqlite::Connection,
     doc: Document
-) -> bool {
+) -> Result<bool, rusqlite::Error> {
     let tmp = conn.execute(
         "INSERT INTO documents VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
             doc.title,
             doc.path,
             doc.author.uuid,
-            check_inject_sql(doc.subject),
-            check_inject_sql(doc.type_work),
+            doc.subject,
+            doc.type_work,
             doc.number_work,
-            if doc.note == None {
-                "None".to_string()
+            if let Some(note) = doc.note  {
+                note
             } else {
-                doc.note.unwrap().to_string()
+                String::from("None")
             },
-             doc.doc_uuid.unwrap().to_string()
+            doc.doc_uuid.to_string()
         ]
         );
     println!("{:?}", &tmp);
-    return tmp.is_ok()
+    return Ok(tmp.is_ok())
 }
 
 pub fn del_doc(conn: &rusqlite::Connection, doc_uuid: &str) -> bool {
@@ -203,19 +178,23 @@ pub fn del_doc(conn: &rusqlite::Connection, doc_uuid: &str) -> bool {
         Ok(_) => {
             let mut tmp = HashMap::new();
             tmp.insert("doc_uuid".to_string(), doc_uuid.to_string());
-            let path_file_doc = get_doc(
-                (tmp, None),
-                conn
-            )
-                .get(0)
-                .unwrap()
-                .path
-                .clone();
-            fs::remove_file(&path_file_doc).unwrap();
-            conn.execute(
-                "DELETE FROM documents WHERE doc_uuid = (?1)",
-                [doc_uuid]
-            ).is_ok()
+            let res_opt_path_file_doc = get_doc((tmp, None), conn);
+
+            if res_opt_path_file_doc.is_err() {
+                println!("Возникла ошибка при удалении");
+                return false
+            }
+
+            if let Some(doc) = res_opt_path_file_doc.unwrap().get(0) {
+
+                fs::remove_file(&doc.path).unwrap();
+                return
+                    conn.execute(
+                        "DELETE FROM documents WHERE doc_uuid = (?1)",
+                        [doc_uuid]
+                    ).is_ok()
+            }
+            return false;
         },
         Err(_) => false
     }

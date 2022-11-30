@@ -1,18 +1,14 @@
-use std::borrow::BorrowMut;
 use rocket::{
-    Rocket, Build, Request,
-    Response, execute, fairing::AdHoc,
-    form::Form, http::CookieJar
+    fairing::AdHoc,
+    http::CookieJar
 };
 use rocket_sync_db_pools::rusqlite::{
     self,
     Connection,
     OptionalExtension,
-    params
 };
-use reqwest;
 
-use crate::telegram_bot::TgBot;
+use crate::telegram_bot::{TgBot, TelegramBotMethods, BOT_TOKEN};
 use crate::Db;
 
 #[get("/?<nickname>")]
@@ -71,7 +67,7 @@ async fn auth<'a>(
             token_session.clone()
         ));
         let keyboard = TgBot::get_login_confirmation_keyboard(&token_session);
-        TgBot::send_message(&[
+        TgBot::send_message(BOT_TOKEN, &[
             ("chat_id", tg_id_user.to_string().as_str()),
             ("text", "Подтвержаете вход?"),
             ("reply_markup", keyboard.as_str())
@@ -79,16 +75,6 @@ async fn auth<'a>(
         return "Подтвердите вход";
     }
     return "Пользователь не зарегестрирован";
-}
-
-fn create_user_token() {
-
-}
-
-#[get("/tt")]
-async fn test_cock(cookies: &CookieJar<'_>) -> Option<String> {
-   // cookies.add(rocket::http::Cookie::new("message", "hello!"));
-    cookies.get("message").map(|crumb| format!("Message: {}", crumb.value()))
 }
 
 pub fn stage() -> AdHoc {

@@ -13,6 +13,7 @@ use rocket::{
     }
 };
 
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, FromForm)]
 #[serde(crate = "rocket::serde")]
 pub struct Document {
@@ -23,7 +24,7 @@ pub struct Document {
     pub type_work: String,
     pub number_work: i64,
     pub note: Option<String>,
-    pub doc_uuid: Option<String>,
+    pub doc_uuid: String,
 }
 
 
@@ -37,6 +38,37 @@ pub struct DocumentFile<'a> {
     pub type_work: String,
     pub number_work: i64,
     pub note: Option<String>,
+}
+
+impl<'a> DocumentFile<'a> {
+    pub async fn docfile_to_doc(&mut self) -> Document {
+        use uuid::Uuid;
+        use crate::api::PATH_FOR_SAVE_DOCS;
+
+        let doc_uuid = Uuid::new_v4().to_string();
+        let file_name = format!("{}.{}", doc_uuid, self.file_type);
+        let path = format!("{}{}", PATH_FOR_SAVE_DOCS, file_name);
+        self.file.copy_to(path).await.unwrap();
+
+        Document {
+            title: self.title.clone(),
+            path: file_name,
+            author: User {
+                name: "".to_string(),
+                nickname: "".to_string(),
+                avatar: "".to_string(),
+                role: "".to_string(),
+                admin: "".to_string(),
+                tg_id: 0,
+                uuid: self.author_uuid.clone()
+            },
+            subject: self.subject.clone(),
+            type_work: self.type_work.clone(),
+            number_work: self.number_work,
+            note: self.note.clone(),
+            doc_uuid
+        }
+    }
 }
 
 //Структура для запроса документа
