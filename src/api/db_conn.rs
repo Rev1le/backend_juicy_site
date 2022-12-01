@@ -71,12 +71,12 @@ pub fn get_user(
 
 
 pub fn get_doc(
-    dict: (
-        HashMap<String, String>,
-        Option<HashMap<String, String>>
-    ),
+    doc: HashMap<String, String>,
+    user: Option<HashMap<String, String>>,
     conn: &rusqlite::Connection
 ) -> Result<Vec<Document>, rusqlite::Error> {
+
+    let dict: (HashMap<String, String>, Option<HashMap<String, String>>) = (doc, user);
 
     let mut sql_execute_str =
         String::from(
@@ -178,7 +178,7 @@ pub fn del_doc(conn: &rusqlite::Connection, doc_uuid: &str) -> bool {
         Ok(_) => {
             let mut tmp = HashMap::new();
             tmp.insert("doc_uuid".to_string(), doc_uuid.to_string());
-            let res_opt_path_file_doc = get_doc((tmp, None), conn);
+            let res_opt_path_file_doc = get_doc(tmp, None, conn);
 
             if res_opt_path_file_doc.is_err() {
                 println!("Возникла ошибка при удалении");

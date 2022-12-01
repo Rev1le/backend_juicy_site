@@ -13,7 +13,6 @@ use rocket::{
     }
 };
 
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, FromForm)]
 #[serde(crate = "rocket::serde")]
 pub struct Document {
@@ -43,7 +42,7 @@ pub struct DocumentFile<'a> {
 impl<'a> DocumentFile<'a> {
     pub async fn docfile_to_doc(&mut self) -> Document {
         use uuid::Uuid;
-        use crate::api::PATH_FOR_SAVE_DOCS;
+        use super::PATH_FOR_SAVE_DOCS;
 
         let doc_uuid = Uuid::new_v4().to_string();
         let file_name = format!("{}.{}", doc_uuid, self.file_type);
@@ -85,57 +84,57 @@ pub struct DocumentFromRequest<'a> {
 
 impl<'a> DocumentFromRequest<'a> {
 
-    pub fn check_doc(&self)
-                 -> (
-                     HashMap<String, String>, // Для полей документа
-                     Option<HashMap<String, String>> // Для полей автора
-                 ) {
-        let mut res: (
-            HashMap<String, String>,
-            Option<HashMap<String, String>>) = (HashMap::new(), None);
+    pub fn to_hashmap(&self) -> HashMap<String, String> {
+        let mut res: HashMap<String, String> = HashMap::new();
 
         if let Some(title) = self.title {
-            res.0.insert(
+            res.insert(
                 "title".to_string(),
                 title.to_string()
             );
         }
         if let Some(path) = self.path {
-            res.0.insert(
+            res.insert(
                 "path".to_string(),
                 path.to_string()
             );
         }
-        if let Some(author) = self.author {
-            let tmp = author.check_user();
-            if tmp.len() != 0 {
-                res.1 = Some(tmp);
-            }
-        }
         if let Some(subject) = self.subject {
-            res.0.insert(
+            res.insert(
                 "subject".to_string(),
                 subject.to_string()
             );
         }
         if let Some(type_work) = self.type_work {
-            res.0.insert(
+            res.insert(
                 "type_work".to_string(),
                 type_work.to_string()
             );
         }
         if let Some(number_work) = self.number_work {
-            res.0.insert(
+            res.insert(
                 "number_work".to_string(),
                 number_work.to_string()
             );
         }
         if let Some(doc_uuid) = self.doc_uuid {
-            res.0.insert(
+            res.insert(
                 "doc_uuid".to_string(),
                 doc_uuid.to_string()
             );
         }
         res
+    }
+
+    pub fn get_author(&self) -> Option<UserFromRequest> {
+        self.author
+    }
+
+    pub fn author_to_hashmap(&self) -> Option<HashMap<String, String>> {
+        //use super::user::UserFromRequest;
+        if let Some(author) = self.author {
+            return Some(author.to_hashmap())
+        }
+        return None
     }
 }

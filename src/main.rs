@@ -8,6 +8,17 @@ pub mod telegram_bot;
 
 use rocket_sync_db_pools::{database, rusqlite};
 
+struct Config<'a> {
+    path_to_save_docs: &'a str,
+    path_to_save_img: &'a str,
+    telegram_bot_token: &'a str
+}
+// Сделать подгрузку данных из конфига
+const CONFIG: Config = Config {
+    path_to_save_docs:  r"F:\",
+    path_to_save_img: r"F:\Projects\Rust\juicy_site\avatars\",
+    telegram_bot_token: "bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA",
+};
 
 /// Иконка сайта
 #[get("/favicon.ico")] //Иконка сайта

@@ -3,6 +3,21 @@
 version = 3
 
 [[package]]
+name = "TgBot_api"
+version = "0.1.0"
+source = "git+https://github.com/Rev1le/TgBot_api#84c2a00758f1fed777e32b2656e413c2ae0bce99"
+dependencies = [
+ "async-trait",
+ "futures",
+ "reqwest",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "aead"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -702,11 +717,11 @@ dependencies = [
 name = "juicy_site"
 version = "0.1.0"
 dependencies = [
+ "TgBot_api",
  "reqwest",
  "rocket",
  "rocket_sync_db_pools",
  "serde",
- "telegram_bot",
  "url",
  "uuid",
 ]
@@ -1562,20 +1577,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "telegram_bot"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures",
- "reqwest",
- "serde",
- "serde_derive",
- "serde_json",
- "tokio",
- "url",
 ]
 
 [[package]]

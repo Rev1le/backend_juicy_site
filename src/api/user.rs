@@ -15,7 +15,7 @@ pub struct User {
 
 //Структура для запроса пользователя
 #[derive(Debug, FromForm, Copy, Clone)]
-pub(crate) struct UserFromRequest<'a> {
+pub struct UserFromRequest<'a> {
     name: Option<&'a str>,
     nickname: Option<&'a str>,
     avatar: Option<&'a str>,
@@ -27,7 +27,7 @@ pub(crate) struct UserFromRequest<'a> {
 
 impl<'a> UserFromRequest<'a> {
 
-    pub fn check_user(&self) -> HashMap<String, String> {
+    pub fn to_hashmap(&self) -> HashMap<String, String> {
         let mut hm = HashMap::new();
 
         if let Some(name) = self.name {

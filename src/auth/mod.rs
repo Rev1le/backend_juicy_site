@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use rocket::{
     fairing::AdHoc,
     http::CookieJar
@@ -8,7 +9,12 @@ use rocket_sync_db_pools::rusqlite::{
     OptionalExtension,
 };
 
-use crate::telegram_bot::{TgBot, TelegramBotMethods, BOT_TOKEN};
+use crate::telegram_bot::{
+    TgBot,
+    TelegramBotMethods,
+    BOT_TOKEN,
+    InlineKeyboardMarkup
+};
 use crate::Db;
 
 #[get("/?<nickname>")]
@@ -70,11 +76,27 @@ async fn auth<'a>(
         TgBot::send_message(BOT_TOKEN, &[
             ("chat_id", tg_id_user.to_string().as_str()),
             ("text", "Подтвержаете вход?"),
-            ("reply_markup", keyboard.as_str())
+            ("reply_markup", create_login_keyboard().as_str())
         ]).await;
         return "Подтвердите вход";
     }
     return "Пользователь не зарегестрирован";
+}
+
+fn create_login_keyboard() -> String {
+    let mut button_accept = HashMap::new();
+    button_accept.insert("text", "Yes");
+    button_accept.insert("callback_data", "ConfirmedLogin");
+
+    let mut button_denial = HashMap::new();
+    button_denial.insert("text", "No");
+    button_denial.insert("callback_data", "FailureLogin");
+
+    let keyboard = InlineKeyboardMarkup {
+        inline_keyboard: vec![vec![button_accept], vec![button_denial]]
+    };
+
+    keyboard.keyboard_as_str()
 }
 
 pub fn stage() -> AdHoc {

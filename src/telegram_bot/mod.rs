@@ -3,112 +3,28 @@ use rocket::{
     serde::json::{Json, Value},
     fairing::AdHoc
 };
-pub use telegram_bot::telegram_bot_methods::TelegramBotMethods;
+pub use TgBot_api::{telegram_bot_methods::TelegramBotMethods, InlineKeyboardMarkup};
 use uuid::Uuid;
 use crate::Db;
+use crate::CONFIG;
 
-
+pub const BOT_TOKEN: &str = CONFIG.telegram_bot_token;
 pub const TG_API: &str = "https://api.telegram.org/bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
-pub const BOT_TOKEN: &str = "bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
-
 
 pub struct TgBot;
 impl TelegramBotMethods for TgBot {}
-impl TgBot {
-    pub fn get_login_confirmation_keyboard(uuid: &str) -> String {
-        let keyboard_one = r#"
-        {"inline_keyboard":[
-        [
-        {
-            "text": "Yes",
-            "callback_data": "ConfirmedLogin"#;
-
-        let keyboard_two = r#"}
-        ],
-        [
-            {
-                "text": "No",
-                "callback_data": "FailuredLogin"
-            }
-        ]
-        ]}"#;
-
-        format!("{}:{}{}", keyboard_one, uuid,keyboard_two)
-
-    }
-}
-// impl TgBot {
-//     pub async fn send_message<I, K, V>(args: I) -> bool
-//         where
-//             I: IntoIterator,
-//             <I as IntoIterator>::Item: std::borrow::Borrow<(K, V)>,
-//             K: AsRef<str>,
-//             V: AsRef<str>,
-//     {
-//         let request = reqwest::get(Url::parse_with_params(
-//                 &(TG_API.to_owned()+"/sendMessage"),
-//                 args
-//         ).expect("Неправильные аргументы для URL"));
-//
-//         if  request.await.is_ok() {
-//             return true
-//         }
-//         return false
-//     }
-//
-//     pub async fn delete_message<I, K, V>(args: I) -> bool
-//         where
-//             I: IntoIterator,
-//             <I as IntoIterator>::Item: std::borrow::Borrow<(K, V)>,
-//             K: AsRef<str>,
-//             V: AsRef<str>,
-//     {
-//         let request = reqwest::get(Url::parse_with_params(
-//             &(TG_API.to_owned()+"/deleteMessage"),
-//             args
-//         ).expect("Неправильные аргументы для URL"));
-//
-//         if  request.await.is_ok() {
-//             return true
-//         }
-//         return false
-//
-//     }
-//
-//     pub fn get_login_confirmation_keyboard(uuid: &str) -> String {
-//         let keyboard_one = r#"
-//         {"inline_keyboard":[
-//         [
-//         {
-//             "text": "Yes",
-//             "callback_data": "ConfirmedLogin"#;
-//
-//         let keyboard_two = r#"}
-//         ],
-//         [
-//             {
-//                 "text": "No",
-//                 "callback_data": "FailuredLogin"
-//             }
-//         ]
-//         ]}"#;
-//
-//         format!("{}:{}{}", keyboard_one, uuid,keyboard_two)
-//
-//     }
-// }
-
 
 #[post("/", data="<update_data>")]
 async fn get_tg_update<'a>(db: Db, update_data: Json<Value>) -> Json<bool> {
 
     println!("{:?}", update_data);
-    //let update_id = update_data["update_id"].as_i64().unwrap();
 
+    // Если пришло сообщение
     if let Some(message) = update_data.get("message") {
         check_message(message, &db).await;
     }
 
+    // если бот получил callback сообщение
     if let Some(callback_query) = update_data.get("callback_query") {
         check_callback_query(&db, callback_query).await;
     }
@@ -119,19 +35,23 @@ async fn get_tg_update<'a>(db: Db, update_data: Json<Value>) -> Json<bool> {
 async fn check_message(message: &Value, db: &Db) {
 
     let chat_id = message["chat"]["id"].as_i64().unwrap();
-    let user_id = match message.get("from") {
-        Some(user) => user["id"].as_i64().unwrap(),
-        _ => return
-    };
-    let username = match message.get("from") {
-        Some(user) => user["first_name"].as_str().unwrap(),
-        _ => return
-    };
-    let message_text = match message.get("text") {
-        Some(text) => text.as_str().unwrap(),
-        _ => return
-    };
+    let user_id =
+        match message.get("from") {
+            Some(user) => user["id"].as_i64().unwrap(),
+            _ => return
+        };
+    let username =
+        match message.get("from") {
+            Some(user) => user["first_name"].as_str().unwrap(),
+            _ => return
+        };
+    let message_text =
+        match message.get("text") {
+            Some(text) => text.as_str().unwrap(),
+            _ => return
+        };
 
+    // Является ли сообщение командой
     if Some('/') != message_text.chars().next() {
         println!("This is not command!");
         return;
@@ -141,6 +61,7 @@ async fn check_message(message: &Value, db: &Db) {
         .split(" ")
         .collect::<Vec<&str>>();
 
+    // Команда регистрации пользователя
     if words_vec[0] == "/reg" {
         if words_vec.len() < 2 {
             return;
@@ -150,9 +71,15 @@ async fn check_message(message: &Value, db: &Db) {
     }
 }
 
-async fn account_register(username: &str, nickname: &str, user_id: i64, chat_id: i64, db: &Db) {
-
+async fn account_register(
+    username: &str,
+    nickname: &str,
+    user_id: i64,
+    chat_id: i64,
+    db: &Db)
+{
     let tmp_nick = nickname.to_owned();
+
     if let Ok(Some(id)) = db.run(
         move |conn: &mut Connection| {
         conn.query_row(
@@ -216,7 +143,7 @@ async fn check_callback_query(db: &Db, callback: &Value) {
 
 
     if let Some(answer) = callback.get("data") {
-        if answer.as_str().unwrap() == "FailuredLogin" {
+        if answer.as_str().unwrap() == "FailureLogin" {
             println!("пользователь не подтвердил вход");
             return;
         }

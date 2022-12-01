@@ -29,10 +29,11 @@ use document::{
 };
 
 use crate::Db;
+use crate::CONFIG;
 
 // Пути для сохранения изображений и дркументов
-const PATH_FOR_SAVE_DOCS: &str = r"F:\";
-const PATH_FOR_SAVE_AVATARS: &str = r"F:\Projects\Rust\juicy_site\avatars\";
+const PATH_FOR_SAVE_DOCS: &str = CONFIG.path_to_save_docs;
+const PATH_FOR_SAVE_AVATARS: &str = CONFIG.path_to_save_img;
 
 //Структура для возвращения пользователей и(или) документов
 #[derive(Debug, Serialize, Clone)]
@@ -146,7 +147,7 @@ async fn get_json_user_doc<'a>(
         if let Some(user_v) = user {
 
             // Получаем HashMap типа <Данные_пользователя, запрашиваемое_значение>
-            let hm = user_v.check_user();
+            let hm = user_v.to_hashmap();
 
             //Если запрос не с пустыми полями
             if hm.len() != 0 {
@@ -165,7 +166,8 @@ async fn get_json_user_doc<'a>(
     if let Some(true) = all_docs { // Если нужны все документы
         response.docs = db.run(
             |conn| db_conn::get_doc(
-                (HashMap::new(), None),
+                HashMap::new(),
+                None,
                 conn
             )
         ).await.expect("Ошибка при выводе всех документов");
@@ -173,11 +175,13 @@ async fn get_json_user_doc<'a>(
     } else {
         // Если необходимы выбранные документы
         if let Some(doc) = doc {
-            let tmp = doc.check_doc();
+            let hashmap_doc = doc.to_hashmap();
+            let hashmap_author = doc.author_to_hashmap();
+
             // Если были введены поля для документа ИЛИ для автора документа
-            if (tmp.0.len() != 0) || (tmp.1 != None) {
+            if (hashmap_doc.len() != 0) || (hashmap_author != None) {
                 response.docs = db.run(
-                    move |conn| db_conn::get_doc(tmp, conn)
+                    move |conn| db_conn::get_doc(hashmap_doc, hashmap_author, conn)
                 ).await.expect("Ошибка при выводе документов по параметрам");
             }
         }
@@ -225,12 +229,12 @@ async fn update_document(
     new_doc: Form<DocumentFromRequest<'_>>
 ) -> Json<bool>{
 
-    let hm_do = new_doc.into_inner().check_doc();
+    let hm_do = new_doc.into_inner().to_hashmap();
     println!("{:?}", &hm_do);
 
     Json(
         db.run(
-            move |conn| db_conn::update_doc(conn, hm_do.0, doc_uuid)
+            move |conn| db_conn::update_doc(conn, hm_do, doc_uuid)
         ).await
     )
 }
