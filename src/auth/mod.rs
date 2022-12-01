@@ -72,7 +72,6 @@ async fn auth<'a>(
             "session_token",
             token_session.clone()
         ));
-        let keyboard = TgBot::get_login_confirmation_keyboard(&token_session);
         TgBot::send_message(BOT_TOKEN, &[
             ("chat_id", tg_id_user.to_string().as_str()),
             ("text", "Подтвержаете вход?"),

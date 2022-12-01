@@ -1,6 +1,6 @@
 /target/
 /.idea/
-.fleet/
+/.fleet/
 .zip
 sqlite3.def
 sqlite3.dll
