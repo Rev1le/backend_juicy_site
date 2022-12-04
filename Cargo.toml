@@ -16,6 +16,9 @@ uuid = {version = "1.2.2", features = ["v4", "fast-rng", "macro-diagnostics"]}
 url = {version = "2.3.1"}
 TgBot_api = {git="https://github.com/Rev1le/TgBot_api"}
 
+[dependencies.rusqlite]
+features = ["bundled"]
+
 [dependencies.rocket_sync_db_pools]
 version = "0.1.0-rc.2"
 features = [ "sqlite_pool"]

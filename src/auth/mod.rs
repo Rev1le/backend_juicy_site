@@ -72,7 +72,7 @@ async fn auth<'a>(
             "session_token",
             token_session.clone()
         ));
-        TgBot::send_message(BOT_TOKEN, &[
+        TgBot::send_message(&BOT_TOKEN, &[
             ("chat_id", tg_id_user.to_string().as_str()),
             ("text", "Подтвержаете вход?"),
             ("reply_markup", create_login_keyboard().as_str())

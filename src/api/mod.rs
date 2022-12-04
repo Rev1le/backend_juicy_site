@@ -1,12 +1,7 @@
-use rocket::{
-    fs::NamedFile,
-    form::Form,
-    fairing::AdHoc,
-    serde::{
-        json::Json,
-        Serialize,
-    }
-};
+use rocket::{fs::NamedFile, form::Form, fairing::AdHoc, serde::{
+    json::Json,
+    Serialize,
+}, State};
 
 use std::{
     collections::HashMap,
@@ -29,13 +24,8 @@ pub mod user;
 pub mod document;
 pub mod db_conn;
 
-use crate::Db;
-use crate::CONFIG;
-
-// Пути для сохранения изображений и дркументов
-const PATH_FOR_SAVE_DOCS: &str = CONFIG.path_to_save_docs;
-const PATH_FOR_SAVE_AVATARS: &str = CONFIG.path_to_save_img;
-const OS_SEPARATION: char = std::path::MAIN_SEPARATOR;
+use crate::{Config, Db};
+//use crate::Config;
 
 //Структура для возвращения пользователей и(или) документов
 #[derive(Debug, Serialize, Clone)]
@@ -78,7 +68,7 @@ const IMAGE_FORMAT: [&str; 3] = ["ico", "png", "jpg"];
 const DOCUMENTS_FORMAT: [&str; 3] = ["docx", "doc", "pdf"];
 
 #[get("/get_file/<file_name..>")]
-pub async fn get_files(file_name: PathBuf) -> Option<NamedFile> {
+pub async fn get_files(state: &State<Config>, file_name: PathBuf) -> Option<NamedFile> {
 
     println!("Запрошен файл по пути: {:?}", &file_name);
 
@@ -93,16 +83,14 @@ pub async fn get_files(file_name: PathBuf) -> Option<NamedFile> {
     // Соответсвует ли формат файла изображению
     for format in IMAGE_FORMAT {
         if *format == *type_file {
-            path_dir.push_str(PATH_FOR_SAVE_AVATARS);
-            path_dir.push(OS_SEPARATION);
+            path_dir.push_str(&state.path_to_save_img);
         }
     }
 
     // Соответсвует ли формат файла документу
     for format in DOCUMENTS_FORMAT {
         if *format == *type_file {
-            path_dir.push_str(PATH_FOR_SAVE_DOCS);
-            path_dir.push(OS_SEPARATION);
+            path_dir.push_str(&state.path_to_save_docs);
         }
     }
 
@@ -197,9 +185,9 @@ async fn get_json_user_doc<'a>(
 
 
 #[post("/add_doc", data= "<file>")]
-async fn new_doc(db: Db, mut file: Form<DocumentFile<'_>>) -> Json<String> {
+async fn new_doc(state: &State<Config>, db: Db, mut file: Form<DocumentFile<'_>>) -> Json<String> {
 
-    let filed = file.docfile_to_doc().await;
+    let filed = file.docfile_to_doc(&state.path_to_save_docs).await;
     let tmp = filed.path.clone();
     println!("{:?}", &filed);
 
@@ -214,11 +202,14 @@ async fn new_doc(db: Db, mut file: Form<DocumentFile<'_>>) -> Json<String> {
 }
 
 #[delete("/del_doc?<doc_uuid>")]
-async fn delete_document(db: Db, doc_uuid: String) -> Json<bool> {
+async fn delete_document(state: &State<Config>, db: Db, doc_uuid: String) -> Json<bool> {
+
+    let path = state.path_to_save_docs.clone();
 
     Json(
         db.run(move |conn| {
             db_conn::del_doc(
+                &path,
                 conn,
                 &doc_uuid
             )

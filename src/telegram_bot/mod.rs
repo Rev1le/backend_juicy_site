@@ -1,14 +1,10 @@
 use rocket_sync_db_pools::rusqlite::{Connection, OptionalExtension};
-use rocket::{
-    serde::json::{Json, Value},
-    fairing::AdHoc
-};
+use rocket::{serde::json::{Json, Value}, fairing::AdHoc};
 pub use TgBot_api::{telegram_bot_methods::TelegramBotMethods, InlineKeyboardMarkup};
 use uuid::Uuid;
 use crate::Db;
-use crate::CONFIG;
 
-pub const BOT_TOKEN: &str = CONFIG.telegram_bot_token;
+pub const BOT_TOKEN: &str = "bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
 pub const TG_API: &str = "https://api.telegram.org/bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
 
 pub struct TgBot;
@@ -94,12 +90,6 @@ async fn account_register(
             ("text", "Аккаунт с таким ником уже зарегестрирован.")
         ]).await;
         return;
-
-        // argsDict = {
-        //     "chat_id": Chat_id,
-        //     "message_id": message_id,
-        //     "disable_notification" : True
-        // }
     }
     println!("Пользователь не зареган.");
 

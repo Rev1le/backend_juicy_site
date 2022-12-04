@@ -8,18 +8,11 @@ pub mod telegram_bot;
 
 use rocket_sync_db_pools::{database, rusqlite};
 
-struct Config<'a> {
-    path_to_save_docs: &'a str,
-    path_to_save_img: &'a str,
-    telegram_bot_token: &'a str
+pub struct Config {
+    path_to_save_docs: String,
+    path_to_save_img: String,
 }
 // Сделать подгрузку данных из конфига
-
-const CONFIG: Config = Config {
-    path_to_save_docs: r"documents",
-    path_to_save_img: r"avatars",
-    telegram_bot_token: "bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA",
-};
 
 /// Иконка сайта
 #[get("/favicon.ico")] //Иконка сайта
@@ -39,11 +32,16 @@ pub struct Db(rusqlite::Connection);
 
 #[launch]
 pub fn rocket() -> _ {
-    println!("{}", CONFIG.path_to_save_docs);
     rocket::build()
         .mount("/", routes![index, icon])
         .attach(Db::fairing())
         .attach(api::stage())
         .attach(auth::stage())
         .attach(telegram_bot::state())
+        .manage(
+            Config{
+                path_to_save_docs: format!("documents{}", std::path::MAIN_SEPARATOR),
+                path_to_save_img: format!("avatars{}", std::path::MAIN_SEPARATOR),
+            }
+        )
 }

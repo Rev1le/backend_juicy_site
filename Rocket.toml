@@ -14,9 +14,6 @@ cli_colors = true
 #key = "/etc/letsencrypt/live/xn--i1ahcl5aza.xyz/privkey.pem"
 #certs = "/etc/letsencrypt/live/xn--i1ahcl5aza.xyz/cert.pem"
 
-[dependencies.rusqlite]
-features = ["bundled"]
-
 [global.databases.rusqlite]
 url = "file:test.db"
 #"/DAtaBase/test.db"#"file:rusqlite?mode=memory&cache=shared"

@@ -5,8 +5,6 @@ use std::{
 };
 use uuid::Uuid;
 
-use crate::CONFIG;
-
 use super::document::Document;
 use super::user::User;
 
@@ -163,7 +161,7 @@ pub fn add_doc(
     return Ok(tmp.is_ok())
 }
 
-pub fn del_doc(conn: &rusqlite::Connection, doc_uuid: &str) -> bool {
+pub fn del_doc(path_for_save_docs: &str, conn: &rusqlite::Connection, doc_uuid: &str) -> bool {
 
     match Uuid::parse_str(&doc_uuid) {
         Ok(_) => {
@@ -178,8 +176,7 @@ pub fn del_doc(conn: &rusqlite::Connection, doc_uuid: &str) -> bool {
 
             if let Some(doc) = res_opt_path_file_doc.unwrap().get(0) {
 
-                let mut path = CONFIG.path_to_save_docs.to_string();
-                path.push(std::path::MAIN_SEPARATOR);
+                let mut path = path_for_save_docs.to_string();
                 path.push_str(&doc.path);
 
                 fs::remove_file(&path).unwrap();
