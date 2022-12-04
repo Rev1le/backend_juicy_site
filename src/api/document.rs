@@ -75,7 +75,7 @@ impl<'a> DocumentFile<'a> {
 pub struct DocumentFromRequest<'a> {
     title: Option<&'a str>,
     path: Option<&'a str>,
-    author: Option<UserFromRequest<'a>>,
+    author: UserFromRequest<'a>,
     subject: Option<&'a str>,
     type_work: Option<&'a str>,
     number_work: Option<&'a str>,
@@ -126,15 +126,18 @@ impl<'a> DocumentFromRequest<'a> {
         res
     }
 
-    pub fn get_author(&self) -> Option<UserFromRequest> {
+    pub fn get_author(&self) -> UserFromRequest {
         self.author
     }
 
     pub fn author_to_hashmap(&self) -> Option<HashMap<String, String>> {
         //use super::user::UserFromRequest;
-        if let Some(author) = self.author {
-            return Some(author.to_hashmap())
+        let hm = self.author.to_hashmap();
+
+        if hm.len() == 0 {
+            return None
         }
-        return None
+
+        return Some(hm)
     }
 }

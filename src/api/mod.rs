@@ -109,8 +109,8 @@ pub async fn get_files(state: &State<Config>, file_name: PathBuf) -> Option<Name
 #[get("/get?<user>&<doc>&<all_users>&<all_docs>")]
 async fn get_json_user_doc<'a>(
     db: Db,
-    user: Option<UserFromRequest<'a>>,
-    doc: Option<DocumentFromRequest<'a>>,
+    user: UserFromRequest<'a>,
+    doc: DocumentFromRequest<'a>,
     all_users: Option<bool>, // Если нужны все пользователи
     all_docs: Option<bool>  // Если нужны все документы
 ) -> Json<Response> {
@@ -136,20 +136,18 @@ async fn get_json_user_doc<'a>(
     } else
     //Если необходимы пользователим по ключевым полям
     {
-        if let Some(user_v) = user {
 
-            // Получаем HashMap типа <Данные_пользователя, запрашиваемое_значение>
-            let hm = user_v.to_hashmap();
+        // Получаем HashMap типа <Данные_пользователя, запрашиваемое_значение>
+        let hm = user.to_hashmap();
 
-            //Если запрос не с пустыми полями
-            if hm.len() != 0 {
-                let opt_user_vec = db.run(
-                    |conn| db_conn::get_user(conn, hm)
-                ).await.expect("Ошибка при получении пользователей по пармаетрам");
+        //Если запрос не с пустыми полями
+        if hm.len() != 0 {
+            let opt_user_vec = db.run(
+                |conn| db_conn::get_user(conn, hm)
+            ).await.expect("Ошибка при получении пользователей по пармаетрам");
 
-                if let Some(user_vec) = opt_user_vec {
-                    response.users = user_vec
-                }
+            if let Some(user_vec) = opt_user_vec {
+                response.users = user_vec
             }
         }
     }
@@ -166,16 +164,16 @@ async fn get_json_user_doc<'a>(
 
     } else {
         // Если необходимы выбранные документы
-        if let Some(doc) = doc {
-            let hashmap_doc = doc.to_hashmap();
-            let hashmap_author = doc.author_to_hashmap();
+        let hashmap_doc = doc.to_hashmap();
+        let hashmap_author = doc.author_to_hashmap();
 
-            // Если были введены поля для документа ИЛИ для автора документа
-            if (hashmap_doc.len() != 0) || (hashmap_author != None) {
-                response.docs = db.run(
-                    move |conn| db_conn::get_doc(hashmap_doc, hashmap_author, conn)
-                ).await.expect("Ошибка при выводе документов по параметрам");
-            }
+        println!("{:?}{:?}", &hashmap_doc, &hashmap_author);
+
+        // Если были введены поля для документа ИЛИ для автора документа
+        if (hashmap_doc.len() != 0) || (hashmap_author != None) {
+            response.docs = db.run(
+                move |conn| db_conn::get_doc(hashmap_doc, hashmap_author, conn)
+            ).await.expect("Ошибка при выводе документов по параметрам");
         }
     }
     Json(response)
