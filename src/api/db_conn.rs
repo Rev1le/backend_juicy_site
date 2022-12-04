@@ -5,22 +5,13 @@ use std::{
 };
 use uuid::Uuid;
 
+use crate::CONFIG;
+
 use super::document::Document;
 use super::user::User;
 
 // изменить path на type_doc ИБО имя файла - uuid_docБ
 //   а путь к хранилищу файлов может быть динамическим
-
-// fn check_inject_sql(st: String) -> String {
-//     let mut res = String::new();
-//
-//     for val in st.chars() { //Отслеживание SQl инъекций
-//         if !val.is_ascii_punctuation() { //Если символ не пунктуация
-//             res.push(val);
-//         }
-//     }
-//     res
-// }
 pub fn get_user(
     conn: &rusqlite::Connection,
     dict: HashMap<String, String>
@@ -187,7 +178,12 @@ pub fn del_doc(conn: &rusqlite::Connection, doc_uuid: &str) -> bool {
 
             if let Some(doc) = res_opt_path_file_doc.unwrap().get(0) {
 
-                fs::remove_file(&doc.path).unwrap();
+                let mut path = CONFIG.path_to_save_docs.to_string();
+                path.push(std::path::MAIN_SEPARATOR);
+                path.push_str(&doc.path);
+
+                fs::remove_file(&path).unwrap();
+
                 return
                     conn.execute(
                         "DELETE FROM documents WHERE doc_uuid = (?1)",

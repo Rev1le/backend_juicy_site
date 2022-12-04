@@ -1,7 +1,3 @@
-pub mod user;
-pub mod document;
-pub mod db_conn;
-
 use rocket::{
     fs::NamedFile,
     form::Form,
@@ -16,6 +12,7 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf}
 };
+use std::string::ToString;
 
 use user::{
     User,
@@ -28,12 +25,17 @@ use document::{
     DocumentFromRequest
 };
 
+pub mod user;
+pub mod document;
+pub mod db_conn;
+
 use crate::Db;
 use crate::CONFIG;
 
 // Пути для сохранения изображений и дркументов
 const PATH_FOR_SAVE_DOCS: &str = CONFIG.path_to_save_docs;
 const PATH_FOR_SAVE_AVATARS: &str = CONFIG.path_to_save_img;
+const OS_SEPARATION: char = std::path::MAIN_SEPARATOR;
 
 //Структура для возвращения пользователей и(или) документов
 #[derive(Debug, Serialize, Clone)]
@@ -86,30 +88,32 @@ pub async fn get_files(file_name: PathBuf) -> Option<NamedFile> {
             None => return None
         };
 
-    let mut path_dir = " ";
+    let mut path_dir = "".to_string();
 
     // Соответсвует ли формат файла изображению
     for format in IMAGE_FORMAT {
         if *format == *type_file {
-            path_dir = PATH_FOR_SAVE_AVATARS;
+            path_dir.push_str(PATH_FOR_SAVE_AVATARS);
+            path_dir.push(OS_SEPARATION);
         }
     }
 
     // Соответсвует ли формат файла документу
     for format in DOCUMENTS_FORMAT {
         if *format == *type_file {
-            path_dir = PATH_FOR_SAVE_DOCS;
+            path_dir.push_str(PATH_FOR_SAVE_DOCS);
+            path_dir.push(OS_SEPARATION);
         }
     }
 
     // Если формат файла не был опознан
-    if path_dir == " " {
+    if path_dir == "" {
         return None;
     }
 
     return
         NamedFile::open(
-            Path::new(path_dir)
+            Path::new(&path_dir)
                 .join(file_name)
         ).await.ok()  //Возвращает файл или None
 }

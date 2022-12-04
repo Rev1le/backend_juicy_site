@@ -14,9 +14,10 @@ struct Config<'a> {
     telegram_bot_token: &'a str
 }
 // Сделать подгрузку данных из конфига
+
 const CONFIG: Config = Config {
-    path_to_save_docs:  r"F:\",
-    path_to_save_img: r"F:\Projects\Rust\juicy_site\avatars\",
+    path_to_save_docs: r"documents",
+    path_to_save_img: r"avatars",
     telegram_bot_token: "bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA",
 };
 
@@ -38,6 +39,7 @@ pub struct Db(rusqlite::Connection);
 
 #[launch]
 pub fn rocket() -> _ {
+    println!("{}", CONFIG.path_to_save_docs);
     rocket::build()
         .mount("/", routes![index, icon])
         .attach(Db::fairing())

@@ -1,21 +1,19 @@
 [package]
 name = "juicy_site"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+#[build]
+#target = "x86_64-unknown-linux-gnu"
+
+# https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 rocket = { version = "0.5.0-rc.2", features = ["tls", "json"] }
 reqwest = { version = "0.11.13", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
-uuid = {features = [
-    "v4",
-    "fast-rng",
-    "macro-diagnostics"
-]}
+uuid = {version = "1.2.2", features = ["v4", "fast-rng", "macro-diagnostics"]}
 url = {version = "2.3.1"}
-#telegram_bot = {path = "F:\\Projects\\Rust\\telegram_bot"}
 TgBot_api = {git="https://github.com/Rev1le/TgBot_api"}
 
 [dependencies.rocket_sync_db_pools]
