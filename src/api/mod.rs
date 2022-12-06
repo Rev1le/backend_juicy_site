@@ -4,6 +4,7 @@ use rocket::{fs::NamedFile, form::Form, fairing::AdHoc, serde::{
 }, State};
 
 use std::{
+    sync::Mutex,
     collections::HashMap,
     path::{Path, PathBuf}
 };
@@ -17,15 +18,17 @@ use user::{
 use document::{
     Document,
     DocumentFile,
-    DocumentFromRequest
+    DocumentFromRequest,
+    DocumentUUID
 };
 
 pub mod user;
 pub mod document;
 pub mod db_conn;
 
-use crate::{Config, Db};
+use crate::{api, Config, Db};
 //use crate::Config;
+struct CacheDocuments(rocket::tokio::sync::Mutex<Vec<Document>>);
 
 //Структура для возвращения пользователей и(или) документов
 #[derive(Debug, Serialize, Clone)]
@@ -106,18 +109,20 @@ pub async fn get_files(state: &State<Config>, file_name: PathBuf) -> Option<Name
         ).await.ok()  //Возвращает файл или None
 }
 
-#[get("/get?<user>&<doc>&<all_users>&<all_docs>")]
+#[get("/get?<user>&<doc>&<all_users>&<all_docs>&<no_cache>")]
 async fn get_json_user_doc<'a>(
+    state: &State<CacheDocuments>,
     db: Db,
     user: UserFromRequest<'a>,
     doc: DocumentFromRequest<'a>,
     all_users: Option<bool>, // Если нужны все пользователи
-    all_docs: Option<bool>  // Если нужны все документы
+    all_docs: Option<bool>,  // Если нужны все документы
+    no_cache: bool,
 ) -> Json<Response> {
 
     let mut response = Response {
-        users: Vec::with_capacity(4),
-        docs: Vec::with_capacity(4)
+        users: Vec::with_capacity(10),
+        docs: Vec::with_capacity(10)
     };
 
     if let Some(true) = all_users { // Если потребовались все пользователи
@@ -154,13 +159,22 @@ async fn get_json_user_doc<'a>(
 
     // Работа с поиском документов
     if let Some(true) = all_docs { // Если нужны все документы
-        response.docs = db.run(
-            |conn| db_conn::get_doc(
-                HashMap::new(),
-                None,
-                conn
-            )
-        ).await.expect("Ошибка при выводе всех документов");
+        let mut mutex = state.inner().0.lock().await;
+
+        if !no_cache && mutex.len() != 0 {
+            println!("Документы были получены из кеша");
+            response.docs = mutex.clone();
+        } else {
+            println!("Документы были запрошены с БД");
+            response.docs = db.run(
+                |conn| db_conn::get_doc(
+                    HashMap::new(),
+                    None,
+                    conn
+                )
+            ).await.expect("Ошибка при выводе всех документов");
+            *mutex = response.docs.clone();
+        }
 
     } else {
         // Если необходимы выбранные документы
@@ -245,6 +259,11 @@ pub fn stage() -> AdHoc {
                     new_doc,            // Создание документа
                     update_document     // Обновление сведений об документе
                 ]
+            )
+            .manage(
+                CacheDocuments(
+                    rocket::tokio::sync::Mutex::new(Vec::with_capacity(15))
+                )
             )
     })
 }
