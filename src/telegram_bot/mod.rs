@@ -151,9 +151,11 @@ async fn check_callback_query(state: &State<crate::auth::CacheTokens>, db: &Db, 
             }).await.unwrap();
 
             if let Ok(mut mutex) = state.inner().0.try_lock() {
-                    if let Some(_) = mutex.get(tmp[1]) {
-                        mutex.insert(tmp[1].to_string(), true);
-                    }
+                if let Some(_) = mutex.get(tmp[1]) {
+                    let token_str = tmp[1].to_string();
+                    let (_, user) = mutex.remove(&token_str).unwrap();
+                    mutex.insert(token_str, (true, user));
+                }
             }
         }
     }
