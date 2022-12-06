@@ -1,5 +1,5 @@
 use rocket_sync_db_pools::rusqlite::{Connection, OptionalExtension};
-use rocket::{serde::json::{Json, Value}, fairing::AdHoc};
+use rocket::{serde::json::{Json, Value}, fairing::AdHoc, State};
 pub use TgBot_api::{telegram_bot_methods::TelegramBotMethods, InlineKeyboardMarkup};
 use uuid::Uuid;
 use crate::Db;
@@ -11,7 +11,7 @@ pub struct TgBot;
 impl TelegramBotMethods for TgBot {}
 
 #[post("/", data="<update_data>")]
-async fn get_tg_update<'a>(db: Db, update_data: Json<Value>) -> Json<bool> {
+async fn get_tg_update<'a>(state: &State<crate::auth::CacheTokens>, db: Db, update_data: Json<Value>) -> Json<bool> {
 
     println!("{:?}", update_data);
 
@@ -22,7 +22,7 @@ async fn get_tg_update<'a>(db: Db, update_data: Json<Value>) -> Json<bool> {
 
     // если бот получил callback сообщение
     if let Some(callback_query) = update_data.get("callback_query") {
-        check_callback_query(&db, callback_query).await;
+        check_callback_query(state, &db, callback_query).await;
     }
 
     Json(true)
@@ -119,7 +119,7 @@ async fn account_register(
     ).await;
 }
 
-async fn check_callback_query(db: &Db, callback: &Value) {
+async fn check_callback_query(state: &State<crate::auth::CacheTokens>, db: &Db, callback: &Value) {
     if let Some(message) = callback.get("message") {
         let message_id = message["message_id"].as_i64().unwrap();
         let chat_id =message["chat"]["id"].as_i64().unwrap();
@@ -149,6 +149,12 @@ async fn check_callback_query(db: &Db, callback: &Value) {
                     [uuid]
                 )
             }).await.unwrap();
+
+            if let Ok(mut mutex) = state.inner().0.try_lock() {
+                    if let Some(_) = mutex.get(tmp[1]) {
+                        mutex.insert(tmp[1].to_string(), true);
+                    }
+            }
         }
     }
 }
