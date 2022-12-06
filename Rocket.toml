@@ -11,8 +11,8 @@ cli_colors = true
 
 
 #[default.tls]
-#key = "/etc/letsencrypt/live/xn--i1ahcl5aza.xyz/privkey.pem"
-#certs = "/etc/letsencrypt/live/xn--i1ahcl5aza.xyz/cert.pem"
+#key = "/etc/letsencrypt/live/juicysuad.site/privkey.pem"
+#certs = "/etc/letsencrypt/live/juicysuad.site/fullchain.pem"
 
 [global.databases.rusqlite]
 url = "file:test.db"
