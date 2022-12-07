@@ -19,7 +19,6 @@ use document::{
     Document,
     DocumentFile,
     DocumentFromRequest,
-    DocumentUUID
 };
 
 pub mod user;

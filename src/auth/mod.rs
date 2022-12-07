@@ -40,11 +40,11 @@ async fn auth<'a>(
     cookies: &CookieJar<'a>,
     nickname: &'a str,
     new_session: bool,
-) -> &'static str {
+) -> String {
     use uuid::Uuid;
 
     if new_session {
-        cookies.remove(rocket::http::Cookie::named("session_token"))
+        cookies.remove(rocket::http::Cookie::named("session_token"));
     }
 
     if let Some(token_cookie) = cookies.get("session_token") {
@@ -54,13 +54,16 @@ async fn auth<'a>(
         if let Ok(mutex_hm) = state.inner().0.try_lock() {
             if let Some(token_status) = mutex_hm.get(&token_val) {
                 return
+                    // Добавить проверку на изменение запрашиваемого ника.
                     match token_status {
-                        (true, _) => { "Активен" },
-                        (false, _) => { "НЕ Активен" }
+                        (true, _) => { "Активен".to_string() },
+                        (false, _) => { "НЕ Активен".to_string() }
                     }
             }
+            cookies.remove(rocket::http::Cookie::named("session_token"));
+            return "Не смогли получить ваш токен сессии из кеша. Кеш был очищен.".to_string()
         }
-        return "Не можем проверить подлинность токена (Мьютекс не работает)"
+        return "Не можем проверить подлинность токена (Мьютекс не работает)".to_string()
     }
 
     let nickname = nickname.to_string();
@@ -95,14 +98,15 @@ async fn auth<'a>(
         if let Ok(mut mutex) = state.inner().0.try_lock() {
             mutex.insert(token_session.clone(), (false, user));
         } else {
-            return "False added token in cache";
+            return "False added token in cache".to_string();
         }
 
-        let conf_login_with_token = format!("ConfirmedLogin:{}", token_session);
+        let conf_login_with_token = format!("ConfirmedLogin:{}", &token_session);
+        let fail_login_with_token = format!("FailureLogin:{}", &token_session);
         TgBot::send_message(&BOT_TOKEN, &[
             ("chat_id", user_tg_id.to_string()),
-            ("text", "Подтвержаете вход?".to_string()),
-            ("reply_markup", create_login_keyboard(&conf_login_with_token))
+            ("text", format!("Подтвержаете вход? С кодом входа: {}", token_session.split("-").last().unwrap())),
+            ("reply_markup", create_login_keyboard(&conf_login_with_token, &fail_login_with_token))
         ]).await;
 
         cookies.add(rocket::http::Cookie::new(
@@ -110,54 +114,19 @@ async fn auth<'a>(
             token_session.clone())
         );
 
-        return "Подтвердите вход";
+        return format!("Подтвердите вход. Код входа: {}", token_session.split("-").last().unwrap());
     }
-
-
-    // let tg_id_user_opt: Option<i64> = db.run(move |conn: &mut Connection| {
-    //     conn.query_row(
-    //         "SELECT * FROM users WHERE nickname = ?1",
-    //         [nick],
-    //         |row| row.get::<usize, i64>(0)
-    //     ).optional().unwrap()
-    // }).await;
-
-
-    /*
-    if let Some(tg_id_user) = tg_id_user_opt {
-        let nick = nickname.clone();
-        let token_session = Uuid::new_v4().to_string();
-
-        if let Ok(mut mutex) = state.inner().0.try_lock() {
-            mutex.insert(token_session.clone(), false);
-        } else {
-            return "False added token in cache";
-        }
-
-        cookies.add(rocket::http::Cookie::new(
-            "session_token",
-            token_session.clone()
-        ));
-        let conf_login_with_token = format!("ConfirmedLogin:{}", token_session);
-        TgBot::send_message(&BOT_TOKEN, &[
-            ("chat_id", tg_id_user.to_string().as_str()),
-            ("text", "Подтвержаете вход?"),
-            ("reply_markup", create_login_keyboard(&conf_login_with_token).as_str())
-        ]).await;
-        return "Подтвердите вход";
-    }
-     */
-    return "Пользователь не зарегестрирован";
+    return "Пользователь не зарегестрирован. Регистрация просиходит через telegram bota".to_string()
 }
 
-fn create_login_keyboard(conf_login_with_token: &str) -> String {
+fn create_login_keyboard(conf_login_with_token: &str, fail_login_with_token: &str) -> String {
     let mut button_accept = HashMap::new();
     button_accept.insert("text", "Yes");
     button_accept.insert("callback_data", conf_login_with_token);
 
     let mut button_denial = HashMap::new();
     button_denial.insert("text", "No");
-    button_denial.insert("callback_data", "FailureLogin");
+    button_denial.insert("callback_data", fail_login_with_token);
 
     let keyboard = InlineKeyboardMarkup {
         inline_keyboard: vec![vec![button_accept], vec![button_denial]]
@@ -172,7 +141,11 @@ pub fn stage() -> AdHoc {
         |rocket| async {
             rocket
                 .mount("/auth", routes![auth, all_session])
-                .manage(CacheTokens(Mutex::new(HashMap::<String, (bool, User)>::new())))
+                .manage(
+                    CacheTokens(
+                        Mutex::new(HashMap::<String, (bool, User)>::new())
+                    )
+                )
         }
     )
 }

@@ -17,7 +17,7 @@ pub struct Config {
 /// Иконка сайта
 #[get("/favicon.ico")] //Иконка сайта
 pub async fn icon() -> Option<rocket::fs::NamedFile> {
-    rocket::fs::NamedFile::open("icon_site.ico").await.ok()
+    rocket::fs::NamedFile::open("avatars/icon_site.ico").await.ok()
 }
 
 /// Главная страница сайта
@@ -39,6 +39,7 @@ pub fn rocket() -> _ {
         .attach(auth::stage())
         .attach(telegram_bot::state())
         .manage(
+            // Конфиг для путей сохранения аватарок и документов
             Config{
                 path_to_save_docs: format!("documents{}", std::path::MAIN_SEPARATOR),
                 path_to_save_img: format!("avatars{}", std::path::MAIN_SEPARATOR),
