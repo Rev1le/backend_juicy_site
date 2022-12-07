@@ -22,6 +22,13 @@ use crate::telegram_bot::{
 };
 use crate::{Db, api::user::User};
 
+#[derive(Serialize, Debug)]
+struct AuthUser {
+    result: bool,
+    user: Option<User>,
+    error: Option<String>,
+}
+
 // Использовать асинхронный Mutex
 #[derive(Serialize)]
 pub struct CacheTokens(
@@ -40,7 +47,7 @@ async fn auth<'a>(
     cookies: &CookieJar<'a>,
     nickname: &'a str,
     new_session: bool,
-) -> String {
+) -> Json<AuthUser> {
     use uuid::Uuid;
 
     if new_session {
@@ -56,14 +63,14 @@ async fn auth<'a>(
                 return
                     // Добавить проверку на изменение запрашиваемого ника.
                     match token_status {
-                        (true, _) => { "Активен".to_string() },
-                        (false, _) => { "НЕ Активен".to_string() }
+                        (true, user) => { Json(AuthUser{result: true, user: Some(user.clone()), error: None })},
+                        (false, _) => { Json(AuthUser{result: false, user: None, error: Some("Waiting auth".to_string()) }) }
                     }
             }
             cookies.remove(rocket::http::Cookie::named("session_token"));
-            return "Не смогли получить ваш токен сессии из кеша. Кеш был очищен.".to_string()
+            return Json(AuthUser{result: false, user: None, error: Some("Не смогли получить ваш токен сессии из кеша. Кеш был очищен.".to_string()) })
         }
-        return "Не можем проверить подлинность токена (Мьютекс не работает)".to_string()
+        return Json(AuthUser{result: false, user: None, error: Some("Не можем проверить подлинность токена (Мьютекс не работает)".to_string()) })
     }
 
     let nickname = nickname.to_string();
@@ -98,7 +105,7 @@ async fn auth<'a>(
         if let Ok(mut mutex) = state.inner().0.try_lock() {
             mutex.insert(token_session.clone(), (false, user));
         } else {
-            return "False added token in cache".to_string();
+            return Json(AuthUser{result: false, user: None, error: Some("False added token in cache".to_string()) })
         }
 
         let conf_login_with_token = format!("ConfirmedLogin:{}", &token_session);
@@ -114,9 +121,9 @@ async fn auth<'a>(
             token_session.clone())
         );
 
-        return format!("Подтвердите вход. Код входа: {}", token_session.split("-").last().unwrap());
+        return Json(AuthUser{result: false, user: None, error: Some(format!("Подтвердите вход. Код входа: {}", token_session.split("-").last().unwrap())) })
     }
-    return "Пользователь не зарегестрирован. Регистрация просиходит через telegram bota".to_string()
+    return Json(AuthUser{result: false, user: None, error: Some("Пользователь не зарегестрирован. Регистрация просиходит через telegram bota".to_string()) })
 }
 
 fn create_login_keyboard(conf_login_with_token: &str, fail_login_with_token: &str) -> String {
