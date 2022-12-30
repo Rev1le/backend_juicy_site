@@ -1,4 +1,5 @@
 #[macro_use] extern crate rocket;
+
 // Работа с документами
 pub mod api;
 // Авторизация на сайте
@@ -7,12 +8,37 @@ pub mod auth;
 pub mod telegram_bot;
 
 use rocket_sync_db_pools::{database, rusqlite};
+use rocket::serde::json::{serde_json, Value};
+use once_cell::sync::Lazy;
 
 pub struct Config {
     path_to_save_docs: String,
     path_to_save_img: String,
 }
-// Сделать подгрузку данных из конфига
+
+static CONFIG: Lazy<Config> = Lazy::new(|| {
+
+    match std::fs::read_to_string("config.json") {
+        Ok(data) => {
+            let Ok(v) = serde_json::from_str::<Value>(&data) else {
+                panic!("Неверный формат конфига");
+            };
+
+            let documents_path = v["documents"].as_str();
+            let images_path = v["images"].as_str();
+
+            if documents_path == None || images_path == None {
+                panic!("Неверный формат конфига");
+            }
+
+            return Config {
+                path_to_save_docs: documents_path.unwrap().to_owned(),
+                path_to_save_img: images_path.unwrap().to_owned(),
+            }
+        }
+        Err(_) => panic!("Ошибка стения файла конфига")
+    }
+});
 
 /// Иконка сайта
 #[get("/favicon.ico")] //Иконка сайта
@@ -32,6 +58,9 @@ pub struct Db(rusqlite::Connection);
 
 #[launch]
 pub fn rocket() -> _ {
+
+    println!("Путь для сохранения документов: {}\nПуть для сохранения фотографий: {}\n", CONFIG.path_to_save_docs, CONFIG.path_to_save_img);
+
     rocket::build()
         .mount("/", routes![index, icon])
         .attach(Db::fairing())
