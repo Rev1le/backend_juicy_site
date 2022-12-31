@@ -1,14 +1,20 @@
-use rocket::{fs::NamedFile, form::Form, fairing::AdHoc, serde::{
-    json::Json,
-    Serialize,
-}, State};
+use rocket::{
+    State,
+    fs::NamedFile,
+    form::Form,
+    fairing::AdHoc,
+    serde::{
+        json::Json,
+        Serialize,
+    },
+    tokio::sync::Mutex};
 
 use std::{
-    sync::Mutex,
     collections::HashMap,
     path::{Path, PathBuf}
 };
-use std::string::ToString;
+use once_cell::sync::Lazy;
+use rusqlite::Error;
 
 use user::{
     User,
@@ -25,9 +31,15 @@ pub mod user;
 pub mod document;
 pub mod db_conn;
 
-use crate::{api, Config, Db};
-//use crate::Config;
-struct CacheDocuments(rocket::tokio::sync::Mutex<Vec<Document>>);
+use crate::{api, CONFIG, Config, Db};
+
+struct CacheDocuments(Mutex<Vec<Document>>);
+struct CacheUsers(Mutex<Vec<Document>>);
+
+struct ApiCache {
+    documents: Mutex<Vec<Document>>,
+    users: Mutex<Vec<User>>,
+}
 
 //Структура для возвращения пользователей и(или) документов
 #[derive(Debug, Serialize, Clone)]
@@ -70,7 +82,7 @@ const IMAGE_FORMAT: [&str; 3] = ["ico", "png", "jpg"];
 const DOCUMENTS_FORMAT: [&str; 3] = ["docx", "doc", "pdf"];
 
 #[get("/get_file/<file_name..>")]
-pub async fn get_files(state: &State<Config>, file_name: PathBuf) -> Option<NamedFile> {
+pub async fn get_files(file_name: PathBuf) -> Option<NamedFile> {
 
     println!("Запрошен файл по пути: {:?}", &file_name);
 
@@ -85,14 +97,14 @@ pub async fn get_files(state: &State<Config>, file_name: PathBuf) -> Option<Name
     // Соответсвует ли формат файла изображению
     for format in IMAGE_FORMAT {
         if *format == *type_file {
-            path_dir.push_str(&state.path_to_save_img);
+            path_dir.push_str(&CONFIG.path_to_save_img);
         }
     }
 
     // Соответсвует ли формат файла документу
     for format in DOCUMENTS_FORMAT {
         if *format == *type_file {
-            path_dir.push_str(&state.path_to_save_docs);
+            path_dir.push_str(&CONFIG.path_to_save_docs);
         }
     }
 
@@ -160,7 +172,7 @@ async fn get_json_user_doc<'a>(
     if let Some(true) = all_docs { // Если нужны все документы
         let mut mutex = state.inner().0.lock().await;
 
-        if !no_cache && mutex.len() != 0 {
+        if !no_cache {
             println!("Документы были получены из кеша");
             response.docs = mutex.clone();
         } else {
@@ -192,42 +204,62 @@ async fn get_json_user_doc<'a>(
     Json(response)
 }
 
-
-
-
 #[post("/add_doc", data= "<file>")]
-async fn new_doc(state: &State<Config>, db: Db, mut file: Form<DocumentFile<'_>>) -> Json<String> {
+async fn new_doc(state: &State<CacheDocuments>, db: Db, mut file: Form<DocumentFile<'_>>) -> Json<String> {
 
-    let filed = file.docfile_to_doc(&state.path_to_save_docs).await;
-    let tmp = filed.path.clone();
+    let filed = file.docfile_to_doc(&CONFIG.path_to_save_docs).await;
+    let filed_cl = filed.clone();
+    let doc_path = filed.path.clone();
     println!("{:?}", &filed);
 
-    db.run(|conn| {
-        return if let Ok(_) = db_conn::add_doc(conn, filed) {
-            Json(true)
-        } else {
-            Json(false)
+    let added_doc: bool = db.run(|conn| {
+
+        match db_conn::add_doc(conn, filed) {
+            Ok(_) => true,
+            Err(_) => false,
         }
     }).await;
-    return Json(tmp);
+
+    if !added_doc {
+        return Json(String::from("Ошибка добавления документа"));
+    }
+
+    state.inner().0.lock().await.push(filed_cl);
+    return Json(doc_path);
 }
 
 #[delete("/del_doc?<doc_uuid>")]
-async fn delete_document(state: &State<Config>, db: Db, doc_uuid: String) -> Json<bool> {
+async fn delete_document(state: &State<CacheDocuments>, db: Db, doc_uuid: String) -> Json<bool> {
 
-    let path = state.path_to_save_docs.clone();
+    let path = CONFIG.path_to_save_docs.clone();
+    let doc_uuid_tmp = doc_uuid.clone();
 
-    Json(
-        db.run(move |conn| {
-            db_conn::del_doc(
-                &path,
-                conn,
-                &doc_uuid
-            )
-        }).await
-    )
+    let res_deleted: bool =  db.run(move |conn| {
+        db_conn::del_doc(
+            &path,
+            conn,
+            &doc_uuid
+        )
+    }).await;
+
+    if !res_deleted {
+        println!("Удаение не было произвдеено.");
+        return Json(false)
+    }
+
+    let mut mut_vec_docs = state.inner().0.lock().await;
+
+    for (ind, doc) in mut_vec_docs.iter().enumerate() {
+        if doc.doc_uuid == doc_uuid_tmp {
+            mut_vec_docs.remove(ind);
+            return Json(true);
+        }
+    }
+    println!("Файла не оказолось в кеше");
+    return Json(false);
 }
 
+// Кеш не ипортирован
 #[put("/update_doc?<doc_uuid>", data="<new_doc>")]
 async fn update_document(
     db: Db,
@@ -259,10 +291,12 @@ pub fn stage() -> AdHoc {
                     update_document     // Обновление сведений об документе
                 ]
             )
+            .manage(CacheDocuments(Mutex::new(Vec::default())))
             .manage(
-                CacheDocuments(
-                    rocket::tokio::sync::Mutex::new(Vec::with_capacity(15))
-                )
+                ApiCache {
+                    documents: Mutex::new(vec![]),
+                    users: Mutex::new(vec![]),
+                }
             )
     })
 }

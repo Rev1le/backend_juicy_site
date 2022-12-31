@@ -1,4 +1,3 @@
-
 use super::user::{
     User,
     UserFromRequest
@@ -42,7 +41,6 @@ pub struct DocumentFile<'a> {
 impl<'a> DocumentFile<'a> {
     pub async fn docfile_to_doc(&mut self, path_to_save_docs: &str) -> Document {
         use uuid::Uuid;
-
 
         let doc_uuid = Uuid::new_v4().to_string();
         let file_name = format!("{}.{}", doc_uuid, self.file_type);

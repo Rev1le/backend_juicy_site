@@ -14,13 +14,8 @@ use rocket_sync_db_pools::rusqlite::{
     OptionalExtension,
 };
 
-use crate::telegram_bot::{
-    TgBot,
-    TelegramBotMethods,
-    BOT_TOKEN,
-    InlineKeyboardMarkup
-};
-use crate::{Db, api::user::User};
+use crate::telegram_bot::{TgBot, TelegramBotMethods, InlineKeyboardMarkup};
+use crate::{CONFIG, Db, api::user::User};
 
 #[derive(Serialize, Debug)]
 struct AuthUser {
@@ -29,10 +24,17 @@ struct AuthUser {
     error: Option<String>,
 }
 
-// Использовать асинхронный Mutex
+#[derive(Serialize)]
+pub enum StateAuthUser {
+    LoginConfirm(User),
+    WaitConfirm(User),
+    LoginFailure(String),
+}
+
 #[derive(Serialize)]
 pub struct CacheTokens(
-    pub Mutex<HashMap<String, (bool, User)>>
+    // Использовать асинхронный Mutex
+    pub Mutex<HashMap<String, StateAuthUser>>
 );
 
 #[get("/get_all_session")]
@@ -61,20 +63,20 @@ async fn auth<'a>(
         if let Ok(mutex_hm) = state.inner().0.try_lock() {
             if let Some(token_status) = mutex_hm.get(&token_val) {
                 return
-                    // Добавить проверку на изменение запрашиваемого ника.
                     match token_status {
-                        (true, user) => { Json(AuthUser{result: true, user: Some(user.clone()), error: None })},
-                        (false, _) => { Json(AuthUser{result: false, user: None, error: Some("Waiting auth".to_string()) }) }
+                        StateAuthUser::LoginConfirm(user) => {Json(AuthUser{result: true, user: Some(user.clone()), error: None})},
+                        StateAuthUser::WaitConfirm(user) => {Json(AuthUser{result: false, user: None, error: Some(format!("{} подтвердите вход в телеграмме", &user.name))})},
+                        StateAuthUser::LoginFailure(error) => {Json(AuthUser{result: false, user: None, error: Some(error.clone())})},
                     }
+            } else {
+                cookies.remove(rocket::http::Cookie::named("session_token"));
+                return Json(AuthUser{result: false, user: None, error: Some("Выш токен устарел и не поддерживается кешем.".to_string()) })
             }
-            cookies.remove(rocket::http::Cookie::named("session_token"));
-            return Json(AuthUser{result: false, user: None, error: Some("Не смогли получить ваш токен сессии из кеша. Кеш был очищен.".to_string()) })
         }
         return Json(AuthUser{result: false, user: None, error: Some("Не можем проверить подлинность токена (Мьютекс не работает)".to_string()) })
     }
 
-    let nickname = nickname.to_string();
-    let nick = nickname.clone();
+    let nick = nickname.to_string();
 
     let user_opt: Option<User> = db.run(move |conn: &mut Connection| {
         conn.query_row(
@@ -103,14 +105,14 @@ async fn auth<'a>(
         let token_session = Uuid::new_v4().to_string();
 
         if let Ok(mut mutex) = state.inner().0.try_lock() {
-            mutex.insert(token_session.clone(), (false, user));
+            mutex.insert(token_session.clone(), StateAuthUser::WaitConfirm(user));
         } else {
             return Json(AuthUser{result: false, user: None, error: Some("False added token in cache".to_string()) })
         }
 
         let conf_login_with_token = format!("ConfirmedLogin:{}", &token_session);
         let fail_login_with_token = format!("FailureLogin:{}", &token_session);
-        TgBot::send_message(&BOT_TOKEN, &[
+        TgBot::send_message(&CONFIG.telegram_bot_token, &[
             ("chat_id", user_tg_id.to_string()),
             ("text", format!("Подтвержаете вход? С кодом входа: {}", token_session.split("-").last().unwrap())),
             ("reply_markup", create_login_keyboard(&conf_login_with_token, &fail_login_with_token))
@@ -150,7 +152,7 @@ pub fn stage() -> AdHoc {
                 .mount("/auth", routes![auth, all_session])
                 .manage(
                     CacheTokens(
-                        Mutex::new(HashMap::<String, (bool, User)>::new())
+                        Mutex::new(HashMap::<String, StateAuthUser>::new())
                     )
                 )
         }

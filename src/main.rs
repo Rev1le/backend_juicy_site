@@ -11,9 +11,10 @@ use rocket_sync_db_pools::{database, rusqlite};
 use rocket::serde::json::{serde_json, Value};
 use once_cell::sync::Lazy;
 
-pub struct Config {
+struct Config {
     path_to_save_docs: String,
     path_to_save_img: String,
+    telegram_bot_token: String,
 }
 
 static CONFIG: Lazy<Config> = Lazy::new(|| {
@@ -26,14 +27,16 @@ static CONFIG: Lazy<Config> = Lazy::new(|| {
 
             let documents_path = v["documents"].as_str();
             let images_path = v["images"].as_str();
+            let tel_bot_token = v["bot_token"].as_str();
 
-            if documents_path == None || images_path == None {
+            if documents_path == None || images_path == None || tel_bot_token == None {
                 panic!("Неверный формат конфига");
             }
 
             return Config {
                 path_to_save_docs: documents_path.unwrap().to_owned(),
                 path_to_save_img: images_path.unwrap().to_owned(),
+                telegram_bot_token: tel_bot_token.unwrap().to_owned(),
             }
         }
         Err(_) => panic!("Ошибка стения файла конфига")
@@ -58,7 +61,6 @@ pub struct Db(rusqlite::Connection);
 
 #[launch]
 pub fn rocket() -> _ {
-
     println!("Путь для сохранения документов: {}\nПуть для сохранения фотографий: {}\n", CONFIG.path_to_save_docs, CONFIG.path_to_save_img);
 
     rocket::build()
@@ -72,6 +74,7 @@ pub fn rocket() -> _ {
             Config{
                 path_to_save_docs: format!("documents{}", std::path::MAIN_SEPARATOR),
                 path_to_save_img: format!("avatars{}", std::path::MAIN_SEPARATOR),
+                telegram_bot_token: "".to_string(),
             }
         )
 }

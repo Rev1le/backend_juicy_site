@@ -110,7 +110,7 @@ pub fn get_doc(
     })?.collect::<Vec<Result<Document, rusqlite::Error>>>();
 
     let mut ret_doc_vec = Vec::with_capacity(docs_vec.iter().count());
-
+    println!("ddd{:?}", &docs_vec);
     for res_doc in docs_vec {
         if let Ok(doc) = res_doc {
             ret_doc_vec.push(doc);
@@ -169,6 +169,8 @@ pub fn del_doc(path_for_save_docs: &str, conn: &rusqlite::Connection, doc_uuid: 
             tmp.insert("doc_uuid".to_string(), doc_uuid.to_string());
             let res_opt_path_file_doc = get_doc(tmp, None, conn);
 
+            println!("{:?}", &res_opt_path_file_doc);
+
             if res_opt_path_file_doc.is_err() {
                 println!("Возникла ошибка при удалении");
                 return false
@@ -186,10 +188,15 @@ pub fn del_doc(path_for_save_docs: &str, conn: &rusqlite::Connection, doc_uuid: 
                         "DELETE FROM documents WHERE doc_uuid = (?1)",
                         [doc_uuid]
                     ).is_ok()
+            } else {
+                println!("EEEE");
+                return false;
             }
-            return false;
         },
-        Err(_) => false
+        Err(_) => {
+            println!("Был предан не uuid");
+            false
+        }
     }
 }
 

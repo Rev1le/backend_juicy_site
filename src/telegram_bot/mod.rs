@@ -2,9 +2,9 @@ use rocket_sync_db_pools::rusqlite::{Connection, OptionalExtension};
 use rocket::{serde::json::{Json, Value}, fairing::AdHoc, State};
 pub use TgBot_api::{telegram_bot_methods::TelegramBotMethods, InlineKeyboardMarkup};
 use uuid::Uuid;
-use crate::Db;
+use crate::{Db, CONFIG};
 
-pub const BOT_TOKEN: &str = "bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
+//pub const BOT_TOKEN: &str = "bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
 pub const TG_API: &str = "https://api.telegram.org/bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
 
 pub struct TgBot;
@@ -85,7 +85,7 @@ async fn account_register(
         }
     ).await {
         println!("Пользователь зареган с tg_id = {}", id);
-        TgBot::send_message(BOT_TOKEN, &[
+        TgBot::send_message(&CONFIG.telegram_bot_token, &[
             ("chat_id", chat_id.to_string().as_str()),
             ("text", "Аккаунт с таким ником уже зарегестрирован.")
         ]).await;
@@ -111,7 +111,7 @@ async fn account_register(
             .execute(insert_values)
             .expect("Ошибка при добавлении");
     }).await;
-    TgBot::send_message(BOT_TOKEN,
+    TgBot::send_message(&CONFIG.telegram_bot_token,
                         &[
             ("chat_id", chat_id.to_string().as_str()),
             ("text", "Пользователь успешно зарегестрирован!!!")
@@ -124,7 +124,7 @@ async fn check_callback_query(state: &State<crate::auth::CacheTokens>, db: &Db, 
         let message_id = message["message_id"].as_i64().unwrap();
         let chat_id =message["chat"]["id"].as_i64().unwrap();
 
-        TgBot::delete_message(BOT_TOKEN, &[
+        TgBot::delete_message(&CONFIG.telegram_bot_token, &[
             ("message_id", message_id.to_string()),
             ("chat_id", chat_id.to_string()),
             ("disable_notification", true.to_string())
@@ -142,19 +142,15 @@ async fn check_callback_query(state: &State<crate::auth::CacheTokens>, db: &Db, 
 
         if tmp[0] == "ConfirmedLogin" {
             println!("АЙди подтверждения {}", tmp[1]);
-            //let uuid = tmp[1].to_owned();
-            // db.run(move |conn: &mut Connection| {
-            //     conn.execute(
-            //         "UPDATE users_sessions SET activate='true' WHERE token= ?1",
-            //         [uuid]
-            //     )
-            // }).await.unwrap();
 
             if let Ok(mut mutex) = state.inner().0.try_lock() {
+                use crate::auth::StateAuthUser;
                 if let Some(_) = mutex.get(tmp[1]) {
                     let token_str = tmp[1].to_string();
-                    let (_, user) = mutex.remove(&token_str).unwrap();
-                    mutex.insert(token_str, (true, user));
+
+                    if let StateAuthUser::WaitConfirm(user) = mutex.remove(&token_str).unwrap() {
+                        mutex.insert(token_str, crate::auth::StateAuthUser::LoginConfirm(user));
+                    }
                 }
             }
         } else if tmp[0] == "FailureLogin" {
