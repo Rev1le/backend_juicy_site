@@ -15,5 +15,5 @@ cli_colors = true
 #certs = "/etc/letsencrypt/live/juicysuad.site/fullchain.pem"
 
 [global.databases.rusqlite]
-url = "file:test.db"
+url = "file:/home/rev1le/snap/sftpclient/95/Документы/test.db"
 #"/DAtaBase/test.db"#"file:rusqlite?mode=memory&cache=shared"

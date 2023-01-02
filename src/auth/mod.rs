@@ -1,11 +1,12 @@
 use std::{
     collections::HashMap,
-    sync::Mutex
+    //sync::Mutex
 };
 use rocket::{
     serde::{json::Json, Serialize},
     fairing::AdHoc,
     http::CookieJar,
+    tokio::sync::Mutex,
     State
 };
 use rocket_sync_db_pools::rusqlite::{
@@ -17,30 +18,32 @@ use rocket_sync_db_pools::rusqlite::{
 use crate::telegram_bot::{TgBot, TelegramBotMethods, InlineKeyboardMarkup};
 use crate::{CONFIG, Db, api::user::User};
 
-#[derive(Serialize, Debug)]
+#[derive(Clone, Serialize, Debug)]
 struct AuthUser {
     result: bool,
     user: Option<User>,
     error: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub enum StateAuthUser {
     LoginConfirm(User),
     WaitConfirm(User),
     LoginFailure(String),
 }
 
-#[derive(Serialize)]
+
 pub struct CacheTokens(
     // Использовать асинхронный Mutex
     pub Mutex<HashMap<String, StateAuthUser>>
 );
 
+
 #[get("/get_all_session")]
-async fn all_session(state: &State<CacheTokens>) -> Json<&CacheTokens> {
-    Json(state.inner())
+async fn all_session(state: &State<CacheTokens>) -> Json<HashMap<String, StateAuthUser>> {
+    Json(HashMap::clone(&*state.inner().0.lock().await))
 }
+
 
 #[get("/?<nickname>&<new_session>")]
 async fn auth<'a>(

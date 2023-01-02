@@ -1,17 +1,24 @@
 use rocket_sync_db_pools::rusqlite::{Connection, OptionalExtension};
 use rocket::{serde::json::{Json, Value}, fairing::AdHoc, State};
-pub use TgBot_api::{telegram_bot_methods::TelegramBotMethods, InlineKeyboardMarkup};
 use uuid::Uuid;
-use crate::{Db, CONFIG};
 
-//pub const BOT_TOKEN: &str = "bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
+pub use TgBot_api::{
+    telegram_bot_methods::TelegramBotMethods,
+    InlineKeyboardMarkup
+};
+use crate::{CONFIG, Db};
+
 pub const TG_API: &str = "https://api.telegram.org/bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
 
 pub struct TgBot;
 impl TelegramBotMethods for TgBot {}
 
 #[post("/", data="<update_data>")]
-async fn get_tg_update<'a>(state: &State<crate::auth::CacheTokens>, db: Db, update_data: Json<Value>) -> Json<bool> {
+async fn get_tg_update<'a>(
+    state: &State<crate::auth::CacheTokens>,
+    db: Db,
+    update_data: Json<Value>
+) -> Json<bool> {
 
     println!("{:?}", update_data);
 
@@ -31,21 +38,18 @@ async fn get_tg_update<'a>(state: &State<crate::auth::CacheTokens>, db: Db, upda
 async fn check_message(message: &Value, db: &Db) {
 
     let chat_id = message["chat"]["id"].as_i64().unwrap();
-    let user_id =
-        match message.get("from") {
-            Some(user) => user["id"].as_i64().unwrap(),
-            _ => return
-        };
-    let username =
-        match message.get("from") {
-            Some(user) => user["first_name"].as_str().unwrap(),
-            _ => return
-        };
-    let message_text =
-        match message.get("text") {
-            Some(text) => text.as_str().unwrap(),
-            _ => return
-        };
+    let user_id = match message.get("from") {
+        Some(user) => user["id"].as_i64().unwrap(),
+        _ => return
+    };
+    let username = match message.get("from") {
+        Some(user) => user["first_name"].as_str().unwrap(),
+        _ => return
+    };
+    let message_text = match message.get("text") {
+        Some(text) => text.as_str().unwrap(),
+        _ => return
+    };
 
     // Является ли сообщение командой
     if Some('/') != message_text.chars().next() {
@@ -53,17 +57,15 @@ async fn check_message(message: &Value, db: &Db) {
         return;
     }
 
-    let words_vec = message_text
+    let vec_words = message_text
         .split(" ")
         .collect::<Vec<&str>>();
 
     // Команда регистрации пользователя
-    if words_vec[0] == "/reg" {
-        if words_vec.len() < 2 {
-            return;
-        }
-        let reg_nickname = words_vec[1];
-        account_register(username,  reg_nickname, user_id,chat_id, db).await;
+    if vec_words[0] == "/reg" && vec_words.len() == 2 {
+
+        let reg_nickname = vec_words[1];
+        account_register(username, reg_nickname, user_id, chat_id, db).await;
     }
 }
 
@@ -120,6 +122,7 @@ async fn account_register(
 }
 
 async fn check_callback_query(state: &State<crate::auth::CacheTokens>, db: &Db, callback: &Value) {
+
     if let Some(message) = callback.get("message") {
         let message_id = message["message_id"].as_i64().unwrap();
         let chat_id =message["chat"]["id"].as_i64().unwrap();
@@ -131,12 +134,7 @@ async fn check_callback_query(state: &State<crate::auth::CacheTokens>, db: &Db, 
         ]).await;
     }
 
-
     if let Some(answer) = callback.get("data") {
-        if answer.as_str().unwrap() == "FailureLogin" {
-            println!("пользователь не подтвердил вход");
-            return;
-        }
 
         let tmp = answer.as_str().unwrap().split(":").collect::<Vec<&str>>();
 
@@ -149,7 +147,7 @@ async fn check_callback_query(state: &State<crate::auth::CacheTokens>, db: &Db, 
                     let token_str = tmp[1].to_string();
 
                     if let StateAuthUser::WaitConfirm(user) = mutex.remove(&token_str).unwrap() {
-                        mutex.insert(token_str, crate::auth::StateAuthUser::LoginConfirm(user));
+                        mutex.insert(token_str, StateAuthUser::LoginConfirm(user));
                     }
                 }
             }

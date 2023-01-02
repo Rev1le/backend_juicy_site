@@ -37,8 +37,40 @@ struct CacheDocuments(Mutex<Vec<Document>>);
 struct CacheUsers(Mutex<Vec<Document>>);
 
 struct ApiCache {
-    documents: Mutex<Vec<Document>>,
-    users: Mutex<Vec<User>>,
+    documents: Mutex<HashMap<String, Document>>,
+    users: Mutex<HashMap<String, User>>,
+}
+
+impl ApiCache {
+    // Добавить бинарный поиск при поомщи реализайии трейта Ord
+    // и сравнения уникльного айди документа
+    async fn get_docs(&self) -> Vec<Document> {
+        self.documents.lock().await.values().map(|doc| doc.clone()).collect()
+    }
+
+    async fn get_users(&self) -> Vec<User> {
+        self.users.lock().await.values().map(|user| user.clone()).collect()
+    }
+
+    async fn get_doc_by_uuid(&self, doc_uuid: &str) -> Option<Document> {
+        self.documents.lock().await.get(doc_uuid).cloned()
+    }
+
+    async fn append_new_doc(&self, doc: Document) {
+        self.documents.lock().await.insert(doc.doc_uuid.clone(), doc);
+    }
+
+    async fn append_new_user(&self, user: User) {
+        self.users.lock().await.insert(user.uuid.clone(), user);
+    }
+
+    async fn remove_doc(&self, doc_uuid: &str) {
+        self.documents.lock().await.remove(doc_uuid);
+    }
+
+    async fn remove_user(&self, user_uuid: &str) {
+        self.users.lock().await.remove(user_uuid);
+    }
 }
 
 //Структура для возвращения пользователей и(или) документов
@@ -123,6 +155,7 @@ pub async fn get_files(file_name: PathBuf) -> Option<NamedFile> {
 #[get("/get?<user>&<doc>&<all_users>&<all_docs>&<no_cache>")]
 async fn get_json_user_doc<'a>(
     state: &State<CacheDocuments>,
+    cache: &State<ApiCache>,
     db: Db,
     user: UserFromRequest<'a>,
     doc: DocumentFromRequest<'a>,
@@ -130,6 +163,8 @@ async fn get_json_user_doc<'a>(
     all_docs: Option<bool>,  // Если нужны все документы
     no_cache: bool,
 ) -> Json<Response> {
+
+    println!("{:?}", cache.documents);
 
     let mut response = Response {
         users: Vec::with_capacity(10),
@@ -144,10 +179,8 @@ async fn get_json_user_doc<'a>(
                         .expect("Ошибка при получении всех пользователей с ошибкой")
                 }
             ).await;
-        if let Some(val) = res {
-            response.users = val;
-        } else {
-            println!("Ошибка при получении всех документов");
+        if res.len() > 0 {
+            response.users = res;
         }
     } else
     //Если необходимы пользователим по ключевым полям
@@ -158,11 +191,11 @@ async fn get_json_user_doc<'a>(
 
         //Если запрос не с пустыми полями
         if hm.len() != 0 {
-            let opt_user_vec = db.run(
+            let user_vec = db.run(
                 |conn| db_conn::get_user(conn, hm)
             ).await.expect("Ошибка при получении пользователей по пармаетрам");
 
-            if let Some(user_vec) = opt_user_vec {
+            if user_vec.len() > 0 {
                 response.users = user_vec
             }
         }
@@ -172,11 +205,9 @@ async fn get_json_user_doc<'a>(
     if let Some(true) = all_docs { // Если нужны все документы
         let mut mutex = state.inner().0.lock().await;
 
-        if !no_cache {
-            println!("Документы были получены из кеша");
-            response.docs = mutex.clone();
-        } else {
+        if no_cache {
             println!("Документы были запрошены с БД");
+
             response.docs = db.run(
                 |conn| db_conn::get_doc(
                     HashMap::new(),
@@ -184,7 +215,17 @@ async fn get_json_user_doc<'a>(
                     conn
                 )
             ).await.expect("Ошибка при выводе всех документов");
-            *mutex = response.docs.clone();
+            //*mutex = response.docs.clone();
+
+            for doc in response.docs.iter() {
+                cache.append_new_doc(doc.clone()).await;
+            }
+
+        } else {
+            println!("Документы были получены из кеша");
+            println!("{:?}", cache.get_docs().await);
+            //response.docs = mutex.clone();
+            response.docs = cache.get_docs().await.clone();
         }
 
     } else {
@@ -192,20 +233,24 @@ async fn get_json_user_doc<'a>(
         let hashmap_doc = doc.to_hashmap();
         let hashmap_author = doc.author_to_hashmap();
 
-        println!("{:?}{:?}", &hashmap_doc, &hashmap_author);
-
         // Если были введены поля для документа ИЛИ для автора документа
-        if (hashmap_doc.len() != 0) || (hashmap_author != None) {
+        if (hashmap_doc.len() != 0) || (hashmap_author.len() != 0) {
             response.docs = db.run(
-                move |conn| db_conn::get_doc(hashmap_doc, hashmap_author, conn)
+                move |conn| db_conn::get_doc(hashmap_doc, Some(hashmap_author), conn)
             ).await.expect("Ошибка при выводе документов по параметрам");
         }
     }
     Json(response)
 }
 
+//При добавлени пользователя и взятии из кеша поля юзера пустые
 #[post("/add_doc", data= "<file>")]
-async fn new_doc(state: &State<CacheDocuments>, db: Db, mut file: Form<DocumentFile<'_>>) -> Json<String> {
+async fn new_doc(
+    state: &State<CacheDocuments>,
+    cache: &State<ApiCache>,
+    db: Db,
+    mut file: Form<DocumentFile<'_>>
+) -> Json<String> {
 
     let filed = file.docfile_to_doc(&CONFIG.path_to_save_docs).await;
     let filed_cl = filed.clone();
@@ -224,20 +269,21 @@ async fn new_doc(state: &State<CacheDocuments>, db: Db, mut file: Form<DocumentF
         return Json(String::from("Ошибка добавления документа"));
     }
 
-    state.inner().0.lock().await.push(filed_cl);
+    cache.append_new_doc(filed_cl).await;
+    //state.inner().0.lock().await.push(filed_cl);
     return Json(doc_path);
 }
 
 #[delete("/del_doc?<doc_uuid>")]
-async fn delete_document(state: &State<CacheDocuments>, db: Db, doc_uuid: String) -> Json<bool> {
+async fn delete_document(state: &State<CacheDocuments>, cache: &State<ApiCache>, db: Db, doc_uuid: String) -> Json<bool> {
 
     let path = CONFIG.path_to_save_docs.clone();
     let doc_uuid_tmp = doc_uuid.clone();
 
     let res_deleted: bool =  db.run(move |conn| {
         db_conn::del_doc(
-            &path,
             conn,
+            &path,
             &doc_uuid
         )
     }).await;
@@ -247,13 +293,9 @@ async fn delete_document(state: &State<CacheDocuments>, db: Db, doc_uuid: String
         return Json(false)
     }
 
-    let mut mut_vec_docs = state.inner().0.lock().await;
-
-    for (ind, doc) in mut_vec_docs.iter().enumerate() {
-        if doc.doc_uuid == doc_uuid_tmp {
-            mut_vec_docs.remove(ind);
-            return Json(true);
-        }
+    if cache.documents.lock().await.remove(&doc_uuid_tmp) != None {
+        println!("Документ был удален из кеша");
+        return Json(true)
     }
     println!("Файла не оказолось в кеше");
     return Json(false);
@@ -262,19 +304,24 @@ async fn delete_document(state: &State<CacheDocuments>, db: Db, doc_uuid: String
 // Кеш не ипортирован
 #[put("/update_doc?<doc_uuid>", data="<new_doc>")]
 async fn update_document(
+    cache: &State<ApiCache>,
     db: Db,
     doc_uuid: String,
     new_doc: Form<DocumentFromRequest<'_>>
 ) -> Json<bool>{
 
     let hm_do = new_doc.into_inner().to_hashmap();
-    println!("{:?}", &hm_do);
+    let clon_doc_uuid = doc_uuid.clone();
 
-    Json(
-        db.run(
-            move |conn| db_conn::update_doc(conn, hm_do, doc_uuid)
-        ).await
-    )
+    let updated_doc = db.run(
+        move |conn| db_conn::update_doc(conn, hm_do, doc_uuid)
+    ).await;
+
+    if updated_doc {
+        cache.remove_doc(&clon_doc_uuid);
+    }
+
+    Json(false)
 }
 
 pub fn stage() -> AdHoc {
@@ -294,8 +341,8 @@ pub fn stage() -> AdHoc {
             .manage(CacheDocuments(Mutex::new(Vec::default())))
             .manage(
                 ApiCache {
-                    documents: Mutex::new(vec![]),
-                    users: Mutex::new(vec![]),
+                    documents: Mutex::new(HashMap::default()),
+                    users: Mutex::new(HashMap::default()),
                 }
             )
     })

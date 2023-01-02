@@ -1,19 +1,12 @@
-use super::user::{
-    User,
-    UserFromRequest
-};
-
 use std::collections::HashMap;
 use rocket::{
     fs::TempFile,
-    serde::{
-        Deserialize,
-        Serialize
-    }
+    serde::{Deserialize, Serialize}
 };
 
+use super::user::*;
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, FromForm)]
-#[serde(crate = "rocket::serde")]
 pub struct Document {
     pub title: String,
     pub path: String,
@@ -24,7 +17,6 @@ pub struct Document {
     pub note: Option<String>,
     pub doc_uuid: String,
 }
-
 
 #[derive(Debug, FromForm)]
 pub struct DocumentFile<'a> {
@@ -38,6 +30,7 @@ pub struct DocumentFile<'a> {
     pub note: Option<String>,
 }
 
+// Переписать добавление файла Пользователь с пустыми ячейками - говно
 impl<'a> DocumentFile<'a> {
     pub async fn docfile_to_doc(&mut self, path_to_save_docs: &str) -> Document {
         use uuid::Uuid;
@@ -83,59 +76,52 @@ pub struct DocumentFromRequest<'a> {
 impl<'a> DocumentFromRequest<'a> {
 
     pub fn to_hashmap(&self) -> HashMap<String, String> {
-        let mut res: HashMap<String, String> = HashMap::new();
+        let mut user_hm_params: HashMap<String, String> = HashMap::new();
 
         if let Some(title) = self.title {
-            res.insert(
+            user_hm_params.insert(
                 "title".to_string(),
                 title.to_string()
             );
         }
         if let Some(path) = self.path {
-            res.insert(
+            user_hm_params.insert(
                 "path".to_string(),
                 path.to_string()
             );
         }
         if let Some(subject) = self.subject {
-            res.insert(
+            user_hm_params.insert(
                 "subject".to_string(),
                 subject.to_string()
             );
         }
         if let Some(type_work) = self.type_work {
-            res.insert(
+            user_hm_params.insert(
                 "type_work".to_string(),
                 type_work.to_string()
             );
         }
         if let Some(number_work) = self.number_work {
-            res.insert(
+            user_hm_params.insert(
                 "number_work".to_string(),
                 number_work.to_string()
             );
         }
         if let Some(doc_uuid) = self.doc_uuid {
-            res.insert(
+            user_hm_params.insert(
                 "doc_uuid".to_string(),
                 doc_uuid.to_string()
             );
         }
-        res
+        user_hm_params
     }
 
     pub fn get_author(&self) -> UserFromRequest {
         self.author
     }
 
-    pub fn author_to_hashmap(&self) -> Option<HashMap<String, String>> {
-        //use super::user::UserFromRequest;
-        let hm = self.author.to_hashmap();
-
-        if hm.len() == 0 {
-            return None
-        }
-
-        return Some(hm)
+    pub fn author_to_hashmap(&self) -> HashMap<String, String> {
+        self.author.to_hashmap()
     }
 }

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use rocket::serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, FromForm)]
-#[serde(crate = "rocket::serde")]
 pub struct User {
     pub name: String,
     pub nickname: String,
@@ -14,7 +13,7 @@ pub struct User {
 }
 
 //Структура для запроса пользователя
-#[derive(Debug, FromForm, Copy, Clone)]
+#[derive(Debug, Copy, Clone, FromForm)]
 pub struct UserFromRequest<'a> {
     name: Option<&'a str>,
     nickname: Option<&'a str>,

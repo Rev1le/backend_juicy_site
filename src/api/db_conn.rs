@@ -12,23 +12,18 @@ use super::user::User;
 //   а путь к хранилищу файлов может быть динамическим
 pub fn get_user(
     conn: &rusqlite::Connection,
-    dict: HashMap<String, String>
-) -> Result<Option<Vec<User>>, rusqlite::Error>{
+    param: HashMap<String, String>
+) -> Result<Vec<User>, rusqlite::Error>{
 
     let mut execute_str = String::from("SELECT * FROM users WHERE ");
 
-    for (column, value) in dict {
-        let tmp = format!(
-            "{} = '{}' AND ",
-            column,
-            value
-        );
-        execute_str += &tmp;
+    for (column, value) in param {
+        execute_str.push_str(&format!("{} = '{}' AND ", column, value));
     }
-    // Послоедние слова всегдла будут AND
-    let res = &execute_str[0..execute_str.len()-4];
+    // Послоедние слова всегда будут AND
+    let execute_str = &execute_str[0..execute_str.len()-4];
 
-    let mut stmt = conn.prepare(res)?;
+    let mut stmt = conn.prepare(execute_str)?;
 
     let users_vec = stmt
         .query_map([], |row| {
@@ -43,42 +38,34 @@ pub fn get_user(
                     uuid: row.get(6).unwrap()
                 }
             )
-        })?.collect::<Vec<Result<User, rusqlite::Error>>>();
+        })?
+        .map(|res_user| res_user.unwrap())
+        .collect::<Vec<User>>();
 
-    let mut ret_users_vec = Vec::with_capacity(users_vec.iter().count());
-
-    for res_user in users_vec {
-        if let Ok(user) = res_user {
-            ret_users_vec.push(user);
-        } else {
-            println!("Пользователь получен с ошибкой");
-        }
-    }
-
-    Ok(Some(ret_users_vec))
+    Ok(users_vec)
 }
 
 
 pub fn get_doc(
     doc: HashMap<String, String>,
-    user: Option<HashMap<String, String>>,
+    opt_user: Option<HashMap<String, String>>,
     conn: &rusqlite::Connection
 ) -> Result<Vec<Document>, rusqlite::Error> {
 
-    let dict: (HashMap<String, String>, Option<HashMap<String, String>>) = (doc, user);
+    //let dict: (HashMap<String, String>, HashMap<String, String>) = (doc, user);
 
     let mut sql_execute_str =
         String::from(
             "SELECT * FROM users, documents WHERE (documents.author_uuid = users.uuid) ");
 
-    for (key, val) in dict.0 {
+    for (key, val) in doc {
         //let tmp = val;
         sql_execute_str += &format!(r##"AND documents.{} = '{}'"##, key, val);
-
     }
+
     // Если был запрошен автор документа
-    if let Some(users_args) = dict.1 {
-        for (key, val) in users_args {
+    if let Some(user) = opt_user {
+        for (key, val) in user {
             //let tmp = check_inject_sql(val);
             sql_execute_str += &format!(r##"AND users.{} = '{}'"##, key, val);
         }
@@ -139,8 +126,8 @@ pub fn get_all_users_uuid(conn: &rusqlite::Connection) -> Vec<String> {
 pub fn add_doc(
     conn: &rusqlite::Connection,
     doc: Document
-) -> Result<bool, rusqlite::Error> {
-    let tmp = conn.execute(
+) -> Result<usize, rusqlite::Error> {
+    conn.execute(
         "INSERT INTO documents VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
             doc.title,
@@ -155,49 +142,41 @@ pub fn add_doc(
                 String::from("None")
             },
             doc.doc_uuid.to_string()
-        ]
-        );
-    println!("{:?}", &tmp);
-    return Ok(tmp.is_ok())
+        ])
 }
 
-pub fn del_doc(path_for_save_docs: &str, conn: &rusqlite::Connection, doc_uuid: &str) -> bool {
+//путь для сохранения файлов брать из конфига
+pub fn del_doc(conn: &rusqlite::Connection, path_for_save_docs: &str, doc_uuid: &str) -> bool {
 
-    match Uuid::parse_str(&doc_uuid) {
-        Ok(_) => {
-            let mut tmp = HashMap::new();
-            tmp.insert("doc_uuid".to_string(), doc_uuid.to_string());
-            let res_opt_path_file_doc = get_doc(tmp, None, conn);
+    let mut tmp = HashMap::default();
+    tmp.insert("doc_uuid".to_string(), doc_uuid.to_owned());
 
-            println!("{:?}", &res_opt_path_file_doc);
+    let res_vec_docs = get_doc(tmp, None, conn);
+    // Может не вернуть документов, если uuid пользователя не ущетсвует
 
-            if res_opt_path_file_doc.is_err() {
-                println!("Возникла ошибка при удалении");
-                return false
-            }
+    match res_vec_docs {
+        Ok(vec_docs) => {
 
-            if let Some(doc) = res_opt_path_file_doc.unwrap().get(0) {
-
+            if vec_docs.len() > 0 {
                 let mut path = path_for_save_docs.to_string();
-                path.push_str(&doc.path);
+                path.push_str(&vec_docs.first().unwrap().path);
 
-                fs::remove_file(&path).unwrap();
-
-                return
-                    conn.execute(
-                        "DELETE FROM documents WHERE doc_uuid = (?1)",
-                        [doc_uuid]
-                    ).is_ok()
+                if fs::remove_file(&path).is_ok() {
+                    return
+                        conn.execute(
+                            "DELETE FROM documents WHERE doc_uuid = (?1)",
+                            [doc_uuid]
+                        ).is_ok()
+                } else {
+                    println!("Файл не был удален файловой системой");
+                }
             } else {
-                println!("EEEE");
-                return false;
+                println!("Документа по заданному uuid не был найден");
             }
         },
-        Err(_) => {
-            println!("Был предан не uuid");
-            false
-        }
+        Err(_) => {}
     }
+    return false
 }
 
 pub fn update_doc(
