@@ -3,6 +3,7 @@ use rocket::{
     fs::TempFile,
     serde::{Deserialize, Serialize}
 };
+use crate::Db;
 
 use super::user::*;
 
@@ -16,6 +17,12 @@ pub struct Document {
     pub number_work: i64,
     pub note: Option<String>,
     pub doc_uuid: String,
+}
+
+impl Document {
+    pub fn doc_request_to_document(self, doc_req: DocumentFromRequest) {
+
+    }
 }
 
 #[derive(Debug, FromForm)]
@@ -32,6 +39,7 @@ pub struct DocumentFile<'a> {
 
 // Переписать добавление файла Пользователь с пустыми ячейками - говно
 impl<'a> DocumentFile<'a> {
+
     pub async fn docfile_to_doc(&mut self, path_to_save_docs: &str) -> Document {
         use uuid::Uuid;
 
@@ -75,6 +83,27 @@ pub struct DocumentFromRequest<'a> {
 
 impl<'a> DocumentFromRequest<'a> {
 
+    pub async fn get_docs_db(self, db: &Db) -> Vec<Document> {
+        use super::db_conn;
+
+        // Если необходимы выбранные документы
+        let hashmap_doc = self.to_hashmap();
+        let hashmap_author = self.author_to_hashmap();
+
+        // Если были введены поля для документа ИЛИ для автора документа
+        if (hashmap_doc.len() != 0) || (hashmap_author.len() != 0) {
+            return db.run(
+                move |conn| db_conn::get_doc(hashmap_doc, Some(hashmap_author), conn)
+            ).await.expect("Ошибка при выводе документов по параметрам");
+        }
+
+        Vec::default()
+    }
+
+    pub fn get_author(&self) -> UserFromRequest {
+        self.author
+    }
+
     pub fn to_hashmap(&self) -> HashMap<String, String> {
         let mut user_hm_params: HashMap<String, String> = HashMap::new();
 
@@ -117,11 +146,24 @@ impl<'a> DocumentFromRequest<'a> {
         user_hm_params
     }
 
-    pub fn get_author(&self) -> UserFromRequest {
-        self.author
-    }
-
     pub fn author_to_hashmap(&self) -> HashMap<String, String> {
         self.author.to_hashmap()
     }
+}
+
+pub async fn get_all_docs(db: &Db) -> Vec<Document> {
+    use super::db_conn;
+
+    // Работа с поиском документов
+    println!("Документы были запрошены с БД");
+
+    let response: Vec<Document> = db.run(
+        |conn| db_conn::get_doc(
+            HashMap::new(),
+            None,
+            conn
+        )
+    ).await.expect("Ошибка при выводе всех документов");
+
+    return response
 }

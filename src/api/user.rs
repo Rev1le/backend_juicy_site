@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use rocket::serde::{Deserialize, Serialize};
+use crate::Db;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, FromForm)]
 pub struct User {
@@ -25,6 +26,26 @@ pub struct UserFromRequest<'a> {
 }
 
 impl<'a> UserFromRequest<'a> {
+
+    pub async fn get_users_db(self, db: &Db) -> Vec<User> {
+        use super::db_conn;
+
+        // Получаем HashMap типа <Данные_пользователя, запрашиваемое_значение>
+        let hm = self.to_hashmap();
+
+        //Если запрос не с пустыми полями
+        if hm.len() != 0 {
+            let user_vec = db.run(
+                |conn| db_conn::get_user(conn, hm)
+            ).await.expect("Ошибка при получении пользователей по пармаетрам");
+
+            if user_vec.len() > 0 {
+                return user_vec
+            }
+        }
+
+        Vec::default()
+    }
 
     pub fn to_hashmap(&self) -> HashMap<String, String> {
         let mut hm = HashMap::new();
@@ -73,4 +94,22 @@ impl<'a> UserFromRequest<'a> {
         }
         hm
     }
+}
+
+pub async fn get_all_users(db: &Db) -> Vec<User> {
+    use super::db_conn;
+
+    let res = db
+        .run(
+            move |conn| {
+                db_conn::get_user(conn, HashMap::new())
+                    .expect("Ошибка при получении всех пользователей с ошибкой")
+            }
+        ).await;
+
+    if res.len() > 0 {
+        return res;
+    }
+
+    return Vec::default()
 }

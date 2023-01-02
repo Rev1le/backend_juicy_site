@@ -3,13 +3,13 @@ use std::{
     collections::HashMap,
     fs,
 };
+use rusqlite::Connection;
 use uuid::Uuid;
+use crate::Db;
 
 use super::document::Document;
 use super::user::User;
 
-// изменить path на type_doc ИБО имя файла - uuid_docБ
-//   а путь к хранилищу файлов может быть динамическим
 pub fn get_user(
     conn: &rusqlite::Connection,
     param: HashMap<String, String>
