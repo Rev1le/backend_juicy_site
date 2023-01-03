@@ -1,8 +1,19 @@
 use std::collections::HashMap;
-use rocket::http::ext::IntoCollection;
+use std::fs;
+use rocket::fairing::AdHoc;
+use rocket::serde::Serialize;
 use rocket::tokio::sync::Mutex;
+use serde::{Deserialize, Deserializer};
+use serde_json::de::StrRead;
+use serde_json::Value;
 
 use super::{User, Document};
+
+#[derive(Serialize, Deserialize, Debug)]
+struct DeserCache{
+    documents: HashMap<String, Document>,
+    users: HashMap<String, User>,
+}
 
 pub struct ApiCache {
     documents: Mutex<HashMap<String, Document>>,
@@ -12,10 +23,26 @@ pub struct ApiCache {
 impl ApiCache {
 
     pub fn new() -> Self {
+        use serde_json;
+
+        let file_str = fs::read_to_string("cache_ser.json").unwrap();
+        let data: DeserCache = serde_json::from_str(&file_str).unwrap();
+
         ApiCache {
-            documents: Mutex::new(HashMap::default()),
-            users: Mutex::new(HashMap::default()),
+            documents: Mutex::new(data.documents),
+            users: Mutex::new(data.users),
         }
+    }
+
+    pub async fn write_cache_to_json(&self) {
+        let cache_string = serde_json::to_string(
+            &DeserCache {
+                documents: self.documents.lock().await.clone(),
+                users: self.users.lock().await.clone(),
+            }
+        ).unwrap();
+
+        fs::write("cache_ser.json", cache_string).unwrap()
     }
 
     // Добавить бинарный поиск при поомщи реализайии трейта Ord
@@ -30,6 +57,10 @@ impl ApiCache {
 
     pub async fn get_doc_by_uuid(&self, doc_uuid: &str) -> Option<Document> {
         self.documents.lock().await.get(doc_uuid).cloned()
+    }
+
+    pub async fn get_user_by_uuid(&self, user_uuid: &str) -> Option<User> {
+        self.users.lock().await.get(user_uuid).cloned()
     }
 
     pub async fn set_docs(&self, docs: &Vec<Document>) {
@@ -59,4 +90,11 @@ impl ApiCache {
     pub async fn remove_user(&self, user_uuid: &str) -> Option<User> {
         self.users.lock().await.remove(user_uuid)
     }
+}
+
+pub fn state() -> AdHoc {
+    AdHoc::on_shutdown("Bye!",|rocket| Box::pin(async move {
+        rocket.state::<ApiCache>().unwrap().write_cache_to_json().await;
+        println!("Finish write data")
+    }))
 }

@@ -16,6 +16,7 @@ uuid = {version = "1.2.2", features = ["v4", "fast-rng", "macro-diagnostics"]}
 url = {version = "2.3.1"}
 TgBot_api = {git="https://github.com/Rev1le/TgBot_api"}
 once_cell = {version = "1.17.0"}
+serde_json = {}
 
 [dependencies.rusqlite]
 features = ["bundled"]

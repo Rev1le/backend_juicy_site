@@ -33,6 +33,7 @@ pub mod db_conn;
 mod api_cache;
 
 use crate::{api, CONFIG, Config, Db};
+use crate::api::api_cache::ApiCache;
 use crate::api::db_conn::get_all_users_uuid;
 
 struct CacheDocuments(Mutex<Vec<Document>>);
@@ -54,7 +55,8 @@ struct AllApi<'a> {
 
 ///Адрес для отображения списка api адресов
 #[get("/")]
-async fn all_api<'a>() -> Json<AllApi<'a>> {
+async fn all_api<'a>(cache: &State<ApiCache>) -> Json<AllApi<'a>> {
+    cache.inner().write_cache_to_json().await;
     Json(
         AllApi {
             methods: vec![
@@ -137,6 +139,11 @@ async fn get_json_user_doc<'a>(
 
         match (all_users, all_docs) {
 
+            (true, true) => {
+                response.users = user::get_all_users(&db).await;
+                response.docs = document::get_all_docs(&db).await;
+            },
+
             (true, _) => response.users = user::get_all_users(&db).await,
             (_, true) => response.docs = document::get_all_docs(&db).await,
 
@@ -150,8 +157,22 @@ async fn get_json_user_doc<'a>(
         cache.set_docs(&response.docs).await;
 
     } else {
-        response.users = cache.get_users().await;
-        response.docs = cache.get_docs().await;
+
+        match (all_users, all_docs) {
+
+            (true, true) => {
+                response.users = cache.get_users().await;
+                response.docs = cache.get_docs().await;
+            },
+
+            (true, _) => response.users = cache.get_users().await,
+            (_, true) => response.docs = cache.get_docs().await,
+
+            (false, false) => {
+                response.users = user.get_users_db(&db).await;
+                response.docs = doc.get_docs_db(&db).await;
+            },
+        }
     }
 
     Json(response)
@@ -178,7 +199,10 @@ async fn new_doc(
         return Json(String::from("Ошибка добавления документа"));
     }
 
-    cache.append_doc(filed_cl).await;
+    cache.append_doc(Document {
+        author: cache.get_user_by_uuid(&filed_cl.author.uuid).await.unwrap(),
+        ..filed_cl
+    }).await;
 
     return Json(doc_path);
 }
@@ -220,12 +244,44 @@ async fn update_document(
     let hm_do = new_doc.into_inner().to_hashmap();
     let clon_doc_uuid = doc_uuid.clone();
 
+    let cl_gm_do = hm_do.clone();
+
     let updated_doc = db.run(
-        move |conn| db_conn::update_doc(conn, hm_do, doc_uuid)
+        move |conn| db_conn::update_doc(conn, cl_gm_do, doc_uuid)
     ).await;
 
     if updated_doc {
-        cache.remove_doc(&clon_doc_uuid);
+        let mut tmp_doc = cache.remove_doc(&clon_doc_uuid).await.unwrap();
+
+        for param in hm_do {
+            match param.0.as_str(){
+                "title" => {
+                    tmp_doc.title = param.0;
+                    continue;
+                },
+                "path" => {
+                    tmp_doc.path = param.0;
+                    continue;
+                },
+                "subject" => {
+                    tmp_doc.subject = param.0;
+                    continue;
+                },
+                "type_work" => {
+                    tmp_doc.type_work = param.0;
+                    continue;
+                },
+                "number_work" => {
+                    tmp_doc.number_work = param.0.parse::<i64>().unwrap();
+                    continue;
+                },
+                _ => {
+                    continue;
+                }
+            }
+        }
+
+        cache.append_doc(tmp_doc);
     }
 
     Json(false)
@@ -247,5 +303,6 @@ pub fn stage() -> AdHoc {
             )
             //.manage(CacheDocuments(Mutex::new(Vec::default())))
             .manage(api_cache::ApiCache::new())
+            .attach(api_cache::state())
     })
 }

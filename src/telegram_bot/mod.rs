@@ -29,7 +29,7 @@ async fn get_tg_update<'a>(
 
     // если бот получил callback сообщение
     if let Some(callback_query) = update_data.get("callback_query") {
-        check_callback_query(state, &db, callback_query).await;
+        check_callback_query(state, callback_query).await;
     }
 
     Json(true)
@@ -121,7 +121,7 @@ async fn account_register(
     ).await;
 }
 
-async fn check_callback_query(state: &State<crate::auth::CacheTokens>, db: &Db, callback: &Value) {
+async fn check_callback_query(state: &State<crate::auth::CacheTokens>, callback: &Value) {
 
     if let Some(message) = callback.get("message") {
         let message_id = message["message_id"].as_i64().unwrap();
