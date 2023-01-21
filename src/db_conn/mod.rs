@@ -3,12 +3,9 @@ use std::{
     collections::HashMap,
     fs,
 };
-use rusqlite::Connection;
-use uuid::Uuid;
-use crate::Db;
-
-use super::document::Document;
-use super::user::User;
+use rusqlite::{Connection, OptionalExtension};
+use crate::api::document::Document;
+use crate::api::user::User;
 
 pub fn get_user(
     conn: &rusqlite::Connection,
@@ -203,4 +200,26 @@ pub fn update_doc(
     conn
         .execute(&sql_execute_str, [])
         .is_ok()
+}
+
+pub fn get_user_by_nickname(conn: &mut Connection, nick: &str) -> Option<User> {
+    conn.query_row(
+        "SELECT * FROM users WHERE nickname = ?1",
+        [nick],
+        |row| {
+            Ok(
+                User{
+                    name: row.get_unwrap(0),
+                    nickname: row.get_unwrap(1),
+                    avatar: row.get_unwrap(2),
+                    role: row.get_unwrap(3),
+                    admin: row.get_unwrap(4),
+                    tg_id: row.get_unwrap(5),
+                    uuid: row.get_unwrap(6)
+                }
+            )
+        }
+    )
+        .optional()
+        .expect("Ошибка при поиске пользователя по никнейму(Ошибка БД)")
 }

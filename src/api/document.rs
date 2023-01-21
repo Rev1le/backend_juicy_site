@@ -3,8 +3,8 @@ use rocket::{
     fs::TempFile,
     serde::{Deserialize, Serialize}
 };
-use crate::Db;
 
+use crate::{db_conn, Db};
 use super::user::*;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, FromForm)]
@@ -17,12 +17,6 @@ pub struct Document {
     pub number_work: i64,
     pub note: Option<String>,
     pub doc_uuid: String,
-}
-
-impl Document {
-    pub fn doc_request_to_document(self, doc_req: DocumentFromRequest) {
-
-    }
 }
 
 #[derive(Debug, FromForm)]
@@ -84,7 +78,6 @@ pub struct DocumentFromRequest<'a> {
 impl<'a> DocumentFromRequest<'a> {
 
     pub async fn get_docs_db(self, db: &Db) -> Vec<Document> {
-        use super::db_conn;
 
         // Если необходимы выбранные документы
         let hashmap_doc = self.to_hashmap();
@@ -152,7 +145,6 @@ impl<'a> DocumentFromRequest<'a> {
 }
 
 pub async fn get_all_docs(db: &Db) -> Vec<Document> {
-    use super::db_conn;
 
     // Работа с поиском документов
     println!("Документы были запрошены с БД");

@@ -1,21 +1,23 @@
+use std::path::Path;
+use reqwest::get;
 use rocket_sync_db_pools::rusqlite::{Connection, OptionalExtension};
 use rocket::{serde::json::{Json, Value}, fairing::AdHoc, State};
 use uuid::Uuid;
 
-pub use TgBot_api::{
-    telegram_bot_methods::TelegramBotMethods,
-    InlineKeyboardMarkup
-};
-use crate::{CONFIG, Db};
+use TgBot_api::bot_methods::TelegramBotMethods;
 
-pub const TG_API: &str = "https://api.telegram.org/bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA";
+pub use TgBot_api::types;
+
+use crate::{CONFIG, Db, user_account::StateAuthUser};
+
+pub const TG_API: &str = "https://api.telegram.org/";
 
 pub struct TgBot;
 impl TelegramBotMethods for TgBot {}
 
 #[post("/", data="<update_data>")]
 async fn get_tg_update<'a>(
-    state: &State<crate::auth::CacheTokens>,
+    cache: &State<crate::user_account::CacheSessions>,
     db: Db,
     update_data: Json<Value>
 ) -> Json<bool> {
@@ -29,7 +31,7 @@ async fn get_tg_update<'a>(
 
     // если бот получил callback сообщение
     if let Some(callback_query) = update_data.get("callback_query") {
-        check_callback_query(state, callback_query).await;
+        check_callback_query(cache, callback_query).await;
     }
 
     Json(true)
@@ -87,18 +89,24 @@ async fn account_register(
         }
     ).await {
         println!("Пользователь зареган с tg_id = {}", id);
-        TgBot::send_message(&CONFIG.telegram_bot_token, &[
-            ("chat_id", chat_id.to_string().as_str()),
-            ("text", "Аккаунт с таким ником уже зарегестрирован.")
-        ]).await;
+        let _ = TgBot::send_api_method(
+            "sendMessage",
+            &format!("{}{}", &TG_API, &CONFIG.telegram_bot_token),
+            &[
+                ("chat_id", chat_id.to_string().as_str()),
+                ("text", "Аккаунт с таким ником уже зарегестрирован.")
+            ]
+        ).await;
         return;
     }
     println!("Пользователь не зареган.");
 
+    let user_ava_filename = get_user_avatar(user_id).await;
+
     let insert_values =[
         username.to_string(),
         nickname.to_string(),
-        "unknown.png".to_string(),
+        user_ava_filename,
         "No_Role".to_string(),
         false.to_string(),
         user_id.to_string(),
@@ -113,62 +121,100 @@ async fn account_register(
             .execute(insert_values)
             .expect("Ошибка при добавлении");
     }).await;
-    TgBot::send_message(&CONFIG.telegram_bot_token,
+    //inline_keyboard
+    TgBot::send_api_method("sendMessage", &CONFIG.telegram_bot_token,
                         &[
             ("chat_id", chat_id.to_string().as_str()),
             ("text", "Пользователь успешно зарегестрирован!!!")
         ]
-    ).await;
+    ).await.unwrap();
 }
 
-async fn check_callback_query(state: &State<crate::auth::CacheTokens>, callback: &Value) {
+pub async fn get_user_avatar(user_id: i64) -> String {
+    use reqwest::get;
+
+    let response = TgBot::send_api_method("getUserProfilePhotos", &CONFIG.telegram_bot_token, [("user_id", user_id.to_string())]).await.unwrap();
+    let response_json = response;
+    let telegram_fileid = &response_json["result"]["photos"][0][1]["file_id"];
+    println!("{}", telegram_fileid);
+
+    let response = TgBot::send_api_method("getFile", &CONFIG.telegram_bot_token, [("file_id",  telegram_fileid.as_str().unwrap())]).await.unwrap();
+    let response_json = response;
+    let telegram_filepath = &response_json["result"]["file_path"];
+    println!("{}", telegram_filepath);
+
+    let response = reqwest::get(format!("https://api.telegram.org/file/{}/{}", CONFIG.telegram_bot_token, telegram_filepath.as_str().unwrap())).await.unwrap();
+    let response_image = response.bytes().await.unwrap();
+
+    let save_path = telegram_filepath.as_str().unwrap().split("/").last().unwrap();
+    let save_path = Path::new(save_path).extension().unwrap();
+    println!("{:?}", save_path);
+
+    let name_file = format!("{}.{}", uuid::Uuid::new_v4(), save_path.to_str().unwrap());
+
+    std::fs::write(format!("{}{}",CONFIG.path_to_save_img, &name_file), response_image).unwrap();
+
+    name_file
+}
+
+async fn check_callback_query(
+    cache: &State<crate::user_account::CacheSessions>,
+    callback: &Value)
+{
 
     if let Some(message) = callback.get("message") {
+
         let message_id = message["message_id"].as_i64().unwrap();
         let chat_id =message["chat"]["id"].as_i64().unwrap();
 
-        TgBot::delete_message(&CONFIG.telegram_bot_token, &[
+        TgBot::send_api_method("deleteMessage", &CONFIG.telegram_bot_token, &[
             ("message_id", message_id.to_string()),
             ("chat_id", chat_id.to_string()),
             ("disable_notification", true.to_string())
-        ]).await;
+        ]).await.unwrap();
     }
 
-    if let Some(answer) = callback.get("data") {
+    if let Some(callback_data) = callback.get("data") {
 
-        let tmp = answer.as_str().unwrap().split(":").collect::<Vec<&str>>();
+        let callback_data_str = callback_data.as_str().unwrap();
+        let vec_data = callback_data_str.split(":").collect::<Vec<&str>>();
+        let (state_auth, token) = (vec_data[0], vec_data[1]);
 
-        if tmp[0] == "ConfirmedLogin" {
-            println!("АЙди подтверждения {}", tmp[1]);
+        if let Some(session) = cache.remove_session(token).await {
 
-            if let Ok(mut mutex) = state.inner().0.try_lock() {
-                use crate::auth::StateAuthUser;
-                if let Some(_) = mutex.get(tmp[1]) {
-                    let token_str = tmp[1].to_string();
+            match (state_auth, session) {
+                ("ConfirmedLogin", StateAuthUser::WaitConfirm(user)) => {
+                    cache.insert_session(
+                        token.to_string(),
+                        StateAuthUser::LoginConfirm(user)
+                    ).await;
+                    return;
+                },
 
-                    if let StateAuthUser::WaitConfirm(user) = mutex.remove(&token_str).unwrap() {
-                        mutex.insert(token_str, StateAuthUser::LoginConfirm(user));
-                    }
-                }
-            }
-        } else if tmp[0] == "FailureLogin" {
-            if let Ok(mut mutex) = state.inner().0.try_lock() {
-                if let Some(_) = mutex.get(tmp[1]) {
-                    let token_str = tmp[1].to_string();
-                    mutex.remove(&token_str).unwrap();
-                    println!("Токен {} был удален", &token_str);
-                }
+                ("FailureLogin", StateAuthUser::WaitConfirm(_)) => {
+                    cache.insert_session(
+                        token.to_string(),
+                        StateAuthUser::LoginFailure(
+                            "Пользователь отклонил подтверждение входа".to_string()
+                        )
+                    ).await;
+                    return;
+                },
+
+                _ => {},
             }
         }
+
+        println!("Токена {} не было в кеше", token);
+        return;
     }
 }
-
 
 pub fn state() -> AdHoc {
     AdHoc::on_ignite(
         "telegram_bot",
         |rocket| async {
-            rocket.mount("/telegrmbot/bot5013260088:AAEeM57yLluiO62jFxef5v4LoG4tkLVvUMA/",
+            rocket.mount(format!("/telegram_bot/{}/", CONFIG.telegram_bot_token),
                          routes![get_tg_update])
         }
     )

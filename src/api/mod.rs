@@ -1,43 +1,36 @@
+pub mod user;
+pub mod document;
+mod api_cache;
+
+use std::{
+    path::{Path, PathBuf}
+};
 use rocket::{
     State,
     fs::NamedFile,
     form::Form,
     fairing::AdHoc,
+    http::{Cookie, CookieJar},
     serde::{
         json::Json,
         Serialize,
-    },
-    tokio::sync::Mutex};
-
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf}
+    }
 };
-use once_cell::sync::Lazy;
-use rusqlite::Error;
 
 use user::{
     User,
     UserFromRequest
 };
-
 use document::{
     Document,
     DocumentFile,
     DocumentFromRequest,
 };
 
-pub mod user;
-pub mod document;
-pub mod db_conn;
-mod api_cache;
-
-use crate::{api, CONFIG, Config, Db};
-use crate::api::api_cache::ApiCache;
-use crate::api::db_conn::get_all_users_uuid;
-
-struct CacheDocuments(Mutex<Vec<Document>>);
-struct CacheUsers(Mutex<Vec<Document>>);
+use crate::{db_conn, CONFIG, Db,
+            user_account::{CacheSessions, StateAuthUser, DataAccess}
+};
+use api_cache::ApiCache;
 
 //Структура для возвращения пользователей и(или) документов
 #[derive(Debug, Serialize, Clone)]
@@ -55,8 +48,7 @@ struct AllApi<'a> {
 
 ///Адрес для отображения списка api адресов
 #[get("/")]
-async fn all_api<'a>(cache: &State<ApiCache>) -> Json<AllApi<'a>> {
-    cache.inner().write_cache_to_json().await;
+async fn all_api<'a>() -> Json<AllApi<'a>> {
     Json(
         AllApi {
             methods: vec![
@@ -121,7 +113,8 @@ pub async fn get_files(file_name: PathBuf) -> Option<NamedFile> {
 
 #[get("/get?<user>&<doc>&<all_users>&<all_docs>&<no_cache>")]
 async fn get_json_user_doc<'a>(
-    cache: &State<api_cache::ApiCache>,
+    cache: &State<ApiCache>,
+    cookies: &CookieJar<'a>,
     db: Db,
     user: UserFromRequest<'a>,
     doc: DocumentFromRequest<'a>,
@@ -130,15 +123,19 @@ async fn get_json_user_doc<'a>(
     no_cache: bool,
 ) -> Json<Response> {
 
+
+
     let mut response = Response {
-        users: Vec::with_capacity(10),
-        docs: Vec::with_capacity(10)
+        users: Vec::default(),
+        docs: Vec::default(),
     };
 
+
+
+
+    // Если требуются данные из БД
     if no_cache {
-
         match (all_users, all_docs) {
-
             (true, true) => {
                 response.users = user::get_all_users(&db).await;
                 response.docs = document::get_all_docs(&db).await;
@@ -153,26 +150,26 @@ async fn get_json_user_doc<'a>(
             },
         }
 
+        // Обновляем Хеш-таблицу
         cache.set_users(&response.users).await;
         cache.set_docs(&response.docs).await;
 
-    } else {
+        return Json(response)
+    }
 
-        match (all_users, all_docs) {
+    match (all_users, all_docs) {
+        (true, true) => {
+            response.users = cache.get_users().await;
+            response.docs = cache.get_docs().await;
+        },
 
-            (true, true) => {
-                response.users = cache.get_users().await;
-                response.docs = cache.get_docs().await;
-            },
+        (true, _) => response.users = cache.get_users().await,
+        (_, true) => response.docs = cache.get_docs().await,
 
-            (true, _) => response.users = cache.get_users().await,
-            (_, true) => response.docs = cache.get_docs().await,
-
-            (false, false) => {
-                response.users = user.get_users_db(&db).await;
-                response.docs = doc.get_docs_db(&db).await;
-            },
-        }
+        (false, false) => {
+            response.users = user.get_users_db(&db).await;
+            response.docs = doc.get_docs_db(&db).await;
+        },
     }
 
     Json(response)
@@ -182,33 +179,49 @@ async fn get_json_user_doc<'a>(
 #[post("/add_doc", data= "<file>")]
 async fn new_doc(
     cache: &State<api_cache::ApiCache>,
+    sessions: &State<CacheSessions>,
+    cookies: &CookieJar<'_>,
     db: Db,
     mut file: Form<DocumentFile<'_>>
-) -> Json<String> {
+) -> Json<DataAccess<String, ()>> {
+
+    if !user_access(cookies, sessions).await {
+        return Json(DataAccess::Denied(()))
+    }
 
     let filed = file.docfile_to_doc(&CONFIG.path_to_save_docs).await;
-    let filed_cl = filed.clone();
     let doc_path = filed.path.clone();
     println!("{:?}", &filed);
 
+    let filed_cl = filed.clone();
     let added_doc: bool = db.run(|conn| {
-        db_conn::add_doc(conn, filed).is_ok()
+        db_conn::add_doc(conn, filed_cl).is_ok()
     }).await;
 
     if !added_doc {
-        return Json(String::from("Ошибка добавления документа"));
+        return Json(DataAccess::Allowed(String::from("Ошибка добавления документа")));
     }
 
     cache.append_doc(Document {
-        author: cache.get_user_by_uuid(&filed_cl.author.uuid).await.unwrap(),
-        ..filed_cl
+        author: cache.get_user_by_uuid(&filed.author.uuid).await.unwrap(),
+        ..filed
     }).await;
 
-    return Json(doc_path);
+    return Json(DataAccess::Allowed(doc_path));
 }
 
 #[delete("/del_doc?<doc_uuid>")]
-async fn delete_document(cache: &State<api_cache::ApiCache>, db: Db, doc_uuid: String) -> Json<bool> {
+async fn delete_document(
+    cache: &State<ApiCache>,
+    sessions: &State<CacheSessions>,
+    cookies: &CookieJar<'_>,
+    db: Db,
+    doc_uuid: String
+) -> Json<DataAccess<bool, ()>> {
+
+    if !user_access(cookies, sessions).await {
+        return Json(DataAccess::Denied(()))
+    }
 
     let path = CONFIG.path_to_save_docs.clone();
     let doc_uuid_tmp = doc_uuid.clone();
@@ -225,21 +238,28 @@ async fn delete_document(cache: &State<api_cache::ApiCache>, db: Db, doc_uuid: S
 
     if res_deleted && cache_deleted.is_some() {
         println!("Документ был удален из кеша");
-        return Json(true)
+        return Json(DataAccess::Allowed(true))
     }
 
     println!("Файла не был удален удаление в бд: {} \nудаление в кеше: {}", res_deleted, cache_deleted.is_some());
-    return Json(false);
+    return Json(DataAccess::Allowed(false));
 }
 
 // Кеш не ипортирован
 #[put("/update_doc?<doc_uuid>", data="<new_doc>")]
 async fn update_document(
     cache: &State<api_cache::ApiCache>,
+    sessions: &State<CacheSessions>,
+    cookies: &CookieJar<'_>,
     db: Db,
     doc_uuid: String,
     new_doc: Form<DocumentFromRequest<'_>>
-) -> Json<bool>{
+) -> Json<DataAccess<bool, ()>> {
+
+    if !user_access(cookies, sessions).await {
+        println!("Доступ был запрещен");
+        return Json(DataAccess::Denied(()))
+    }
 
     let hm_do = new_doc.into_inner().to_hashmap();
     let clon_doc_uuid = doc_uuid.clone();
@@ -281,13 +301,32 @@ async fn update_document(
             }
         }
 
-        cache.append_doc(tmp_doc);
+        cache.append_doc(tmp_doc).await;
+
+        return Json(DataAccess::Allowed(true))
     }
 
-    Json(false)
+    Json(DataAccess::Allowed(false))
 }
 
-pub fn stage() -> AdHoc {
+async fn user_access(cookies: &CookieJar<'_>, sessions: &CacheSessions) -> bool {
+
+    if let Some(session) = cookies.get("session_token") {
+
+        match sessions.get_user_authconfirm(session.value()).await {
+            Some(user) => {
+                println!("Документ удаляет {}", user.nickname);
+                return true
+            },
+            None => return false
+        }
+
+    } else {
+        return false
+    }
+}
+
+pub fn state() -> AdHoc {
     AdHoc::on_ignite("API stage", |rocket| async {
         rocket
             .mount(
@@ -301,8 +340,7 @@ pub fn stage() -> AdHoc {
                     update_document     // Обновление сведений об документе
                 ]
             )
-            //.manage(CacheDocuments(Mutex::new(Vec::default())))
-            .manage(api_cache::ApiCache::new())
+            .manage(ApiCache::new())
             .attach(api_cache::state())
     })
 }

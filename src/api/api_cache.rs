@@ -3,9 +3,7 @@ use std::fs;
 use rocket::fairing::AdHoc;
 use rocket::serde::Serialize;
 use rocket::tokio::sync::Mutex;
-use serde::{Deserialize, Deserializer};
-use serde_json::de::StrRead;
-use serde_json::Value;
+use serde::Deserialize;
 
 use super::{User, Document};
 
@@ -23,7 +21,6 @@ pub struct ApiCache {
 impl ApiCache {
 
     pub fn new() -> Self {
-        use serde_json;
 
         let file_str = fs::read_to_string("cache_ser.json").unwrap();
         let data: DeserCache = serde_json::from_str(&file_str).unwrap();

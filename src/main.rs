@@ -2,46 +2,47 @@
 
 // Работа с документами
 pub mod api;
-// Авторизация на сайте
-pub mod auth;
 // Callback телеграм бот
 pub mod telegram_bot;
+// Аккаунт пользователя
+pub mod user_account;
+// Связь с БД
+pub mod db_conn;
 
 use rocket_sync_db_pools::{database, rusqlite};
 use rocket::serde::json::{serde_json, Value};
 use once_cell::sync::Lazy;
 
+// Конфиг для путей сохранения аватарок и документов
 struct Config {
     path_to_save_docs: String,
     path_to_save_img: String,
     telegram_bot_token: String,
 }
 
-static CONFIG: Lazy<Config> = Lazy::new(|| {
+impl Config {
+    pub fn new() -> Self {
 
-    match std::fs::read_to_string("config.json") {
-        Ok(data) => {
-            let Ok(v) = serde_json::from_str::<Value>(&data) else {
-                panic!("Неверный формат конфига");
-            };
+        let config_string = std::fs::read_to_string("config.json").expect("Ошибка стения файла конфига");
+        let config_v = serde_json::from_str::<Value>(&config_string).expect("Неверный формат конфига");
 
-            let documents_path = v["documents"].as_str();
-            let images_path = v["images"].as_str();
-            let tel_bot_token = v["bot_token"].as_str();
+        let documents_path = config_v["documents"].as_str();
+        let images_path = config_v["images"].as_str();
+        let tel_bot_token = config_v["bot_token"].as_str();
 
-            if documents_path == None || images_path == None || tel_bot_token == None {
-                panic!("Неверный формат конфига");
-            }
-
-            return Config {
-                path_to_save_docs: documents_path.unwrap().to_owned(),
-                path_to_save_img: images_path.unwrap().to_owned(),
-                telegram_bot_token: tel_bot_token.unwrap().to_owned(),
-            }
+        if (documents_path, images_path, tel_bot_token) == (None, None, None) {
+            panic!("Неверный формат конфига");
         }
-        Err(_) => panic!("Ошибка стения файла конфига")
+
+        return Config {
+            path_to_save_docs: documents_path.unwrap().to_owned(),
+            path_to_save_img: images_path.unwrap().to_owned(),
+            telegram_bot_token: tel_bot_token.unwrap().to_owned(),
+        }
     }
-});
+}
+
+static CONFIG: Lazy<Config> = Lazy::new(Config::new);
 
 /// Иконка сайта
 #[get("/favicon.ico")] //Иконка сайта
@@ -61,16 +62,19 @@ pub struct Db(rusqlite::Connection);
 
 #[launch]
 pub fn rocket() -> _ {
-    println!("Путь для сохранения документов: {}\nПуть для сохранения фотографий: {}\n", CONFIG.path_to_save_docs, CONFIG.path_to_save_img);
+    println!(
+        "Путь для сохранения документов: {}\nПуть для сохранения фотографий: {}\n",
+        CONFIG.path_to_save_docs,
+        CONFIG.path_to_save_img
+    );
 
     rocket::build()
         .mount("/", routes![index, icon])
         .attach(Db::fairing())
-        .attach(api::stage())
-        .attach(auth::stage())
+        .attach(api::state())
+        .attach(user_account::state())
         .attach(telegram_bot::state())
         .manage(
-            // Конфиг для путей сохранения аватарок и документов
             Config{
                 path_to_save_docs: format!("documents{}", std::path::MAIN_SEPARATOR),
                 path_to_save_img: format!("avatars{}", std::path::MAIN_SEPARATOR),
