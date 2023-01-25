@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use rocket::fairing::AdHoc;
 use rocket::serde::Serialize;
 use rocket::tokio::sync::Mutex;
@@ -22,7 +23,14 @@ impl ApiCache {
 
     pub fn new() -> Self {
 
-        let file_str = fs::read_to_string("cache_ser.json").unwrap();
+        let file_str = if let Ok(str) = fs::read_to_string("cache_ser.json") {
+            str
+        } else {
+            let default_str = r#"{"documents":{}, "users":{}}"#;
+            let mut file = std::fs::File::create("cache_ser.json").unwrap();
+            file.write(&default_str.as_bytes()).unwrap();
+            default_str.to_owned()
+        };
         let data: DeserCache = serde_json::from_str(&file_str).unwrap();
 
         ApiCache {

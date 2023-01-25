@@ -70,7 +70,7 @@ async fn all_api<'a>() -> Json<AllApi<'a>> {
 }
 
 const IMAGE_FORMAT: [&str; 3] = ["ico", "png", "jpg"];
-const DOCUMENTS_FORMAT: [&str; 3] = ["docx", "doc", "pdf"];
+const DOCUMENTS_FORMAT: [&str; 6] = ["docx", "doc", "pdf", "txt", "pptx", "exel"];
 
 #[get("/get_file/<file_name..>")]
 pub async fn get_files(file_name: PathBuf) -> Option<NamedFile> {
@@ -114,7 +114,6 @@ pub async fn get_files(file_name: PathBuf) -> Option<NamedFile> {
 #[get("/get?<user>&<doc>&<all_users>&<all_docs>&<no_cache>")]
 async fn get_json_user_doc<'a>(
     cache: &State<ApiCache>,
-    cookies: &CookieJar<'a>,
     db: Db,
     user: UserFromRequest<'a>,
     doc: DocumentFromRequest<'a>,
@@ -123,15 +122,10 @@ async fn get_json_user_doc<'a>(
     no_cache: bool,
 ) -> Json<Response> {
 
-
-
     let mut response = Response {
         users: Vec::default(),
         docs: Vec::default(),
     };
-
-
-
 
     // Если требуются данные из БД
     if no_cache {
@@ -166,6 +160,7 @@ async fn get_json_user_doc<'a>(
         (true, _) => response.users = cache.get_users().await,
         (_, true) => response.docs = cache.get_docs().await,
 
+        // Если нужны не все пользователи/документы то запрашиваем из БД по нужным полям
         (false, false) => {
             response.users = user.get_users_db(&db).await;
             response.docs = doc.get_docs_db(&db).await;
@@ -194,14 +189,15 @@ async fn new_doc(
     println!("{:?}", &filed);
 
     let filed_cl = filed.clone();
-    let added_doc: bool = db.run(|conn| {
-        db_conn::add_doc(conn, filed_cl).is_ok()
-    }).await;
+    let added_doc: bool = db.run(
+        |conn| db_conn::add_doc(conn, filed_cl).is_ok()
+    ).await;
 
     if !added_doc {
         return Json(DataAccess::Allowed(String::from("Ошибка добавления документа")));
     }
 
+    // Елси пользователя нет в кеше - паника
     cache.append_doc(Document {
         author: cache.get_user_by_uuid(&filed.author.uuid).await.unwrap(),
         ..filed
@@ -241,11 +237,10 @@ async fn delete_document(
         return Json(DataAccess::Allowed(true))
     }
 
-    println!("Файла не был удален удаление в бд: {} \nудаление в кеше: {}", res_deleted, cache_deleted.is_some());
+    println!("Файла не был удален в: удаление в бд: {} \nудаление в кеше: {}", res_deleted, cache_deleted.is_some());
     return Json(DataAccess::Allowed(false));
 }
 
-// Кеш не ипортирован
 #[put("/update_doc?<doc_uuid>", data="<new_doc>")]
 async fn update_document(
     cache: &State<api_cache::ApiCache>,
@@ -266,47 +261,43 @@ async fn update_document(
 
     let cl_gm_do = hm_do.clone();
 
-    let updated_doc = db.run(
-        move |conn| db_conn::update_doc(conn, cl_gm_do, doc_uuid)
-    ).await;
+    match cache.remove_doc(&clon_doc_uuid).await {
+        None => return Json(DataAccess::Allowed(false)),
+        Some(mut tmp_doc) => {
+            let updated_doc = db.run(
+                move |conn| db_conn::update_doc(conn, cl_gm_do, doc_uuid)
+            ).await;
 
-    if updated_doc {
-        let mut tmp_doc = cache.remove_doc(&clon_doc_uuid).await.unwrap();
+            if updated_doc {
 
-        for param in hm_do {
-            match param.0.as_str(){
-                "title" => {
-                    tmp_doc.title = param.0;
-                    continue;
-                },
-                "path" => {
-                    tmp_doc.path = param.0;
-                    continue;
-                },
-                "subject" => {
-                    tmp_doc.subject = param.0;
-                    continue;
-                },
-                "type_work" => {
-                    tmp_doc.type_work = param.0;
-                    continue;
-                },
-                "number_work" => {
-                    tmp_doc.number_work = param.0.parse::<i64>().unwrap();
-                    continue;
-                },
-                _ => {
-                    continue;
+                for param in hm_do {
+                    match param.0.as_str() {
+                        "title" => {
+                            tmp_doc.title = param.1;
+                        },
+                        "path" => {
+                            tmp_doc.path = param.1;
+                        },
+                        "subject" => {
+                            tmp_doc.subject = param.1;
+                        },
+                        "type_work" => {
+                            tmp_doc.type_work = param.1;
+                        },
+                        "number_work" => {
+                            println!("Число для парсинга: {}", &param.1);
+                            tmp_doc.number_work = param.1.parse::<i64>().unwrap();
+                        },
+                        _ => {}
+                    }
                 }
+                cache.append_doc(tmp_doc).await;
+
+                return Json(DataAccess::Allowed(true))
             }
+            return Json(DataAccess::Allowed(false))
         }
-
-        cache.append_doc(tmp_doc).await;
-
-        return Json(DataAccess::Allowed(true))
     }
-
-    Json(DataAccess::Allowed(false))
 }
 
 async fn user_access(cookies: &CookieJar<'_>, sessions: &CacheSessions) -> bool {
