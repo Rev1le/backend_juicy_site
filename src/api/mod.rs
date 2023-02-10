@@ -10,7 +10,7 @@ use rocket::{
     fs::NamedFile,
     form::Form,
     fairing::AdHoc,
-    http::{Cookie, CookieJar},
+    http::{Cookie, CookieJar, Status},
     serde::{
         json::Json,
         Serialize,

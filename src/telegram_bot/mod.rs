@@ -2,6 +2,7 @@ use std::path::Path;
 use reqwest::get;
 use rocket_sync_db_pools::rusqlite::{Connection, OptionalExtension};
 use rocket::{serde::json::{Json, Value}, fairing::AdHoc, State};
+use rocket::http::Status;
 use uuid::Uuid;
 
 use TgBot_api::bot_methods::TelegramBotMethods;
@@ -210,12 +211,17 @@ async fn check_callback_query(
     }
 }
 
+#[get("/")]
+fn just_fail() -> Status {
+    Status::NotAcceptable
+}
+
 pub fn state() -> AdHoc {
     AdHoc::on_ignite(
         "telegram_bot",
         |rocket| async {
             rocket.mount(format!("/telegram_bot/{}/", CONFIG.telegram_bot_token),
-                         routes![get_tg_update])
+                         routes![just_fail, get_tg_update])
         }
     )
 }

@@ -9,6 +9,7 @@ use rocket::{
     http::{Cookie, CookieJar},
     tokio::sync::Mutex
 };
+use rocket::http::Status;
 use crate::api::user::User;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -116,12 +117,17 @@ async fn get_acc_data(cache: &State<CacheSessions>, cookie: &CookieJar<'_>) -> J
     Json(None)
 }
 
+#[get("/")]
+fn just_fail() -> Status {
+    Status::NotAcceptable
+}
+
 pub fn state() -> AdHoc {
     AdHoc::on_ignite(
         "Account State",
         |rocket| async {
             rocket
-                .mount("/session", routes![get_acc_data, add_session])
+                .mount("/session", routes![just_fail, get_acc_data, add_session])
                 .attach(auth::state())
                 .manage(CacheSessions(Mutex::new(HashMap::default())))
         }
